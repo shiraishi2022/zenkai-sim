@@ -751,7 +751,8 @@ details li span { color: var(--muted); font-size: 12px; display: block; }
 .hero-value { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 8px; line-height: 1.05; font-size: 15px; color: var(--ink-2); }
 .hero-value em { font-style: normal; font-size: 22px; font-weight: 600; color: var(--ink); }
 .hero-value b { font-size: 60px; font-weight: 600; color: var(--accent); letter-spacing: -0.01em; font-variant-numeric: tabular-nums; }
-.hero-value span { font-size: 22px; font-weight: 500; color: var(--ink); }
+.hero-value .num { display: inline-flex; align-items: baseline; gap: 6px; white-space: nowrap; }
+.hero-value i { font-style: normal; font-size: 22px; font-weight: 500; color: var(--ink); }
 .hero-note { font-size: 13px; color: var(--ink-2); text-align: right; line-height: 1.55; }
 table.byc { width: 100%; border-collapse: collapse; font-size: 13.5px; }
 table.byc th { text-align: left; font-weight: 500; color: var(--muted); border-bottom: 1px solid var(--axis); padding: 4px 8px 4px 0; }
@@ -837,7 +838,7 @@ table.byc td.n b { color: var(--accent-ink); font-weight: 600; }
         </label>
       </div>
       <div class="hero">
-        <p class="hero-value" aria-live="polite"><em id="v-where"></em>全壊は少なくとも <b id="v-min">0</b><span>棟</span></p>
+        <p class="hero-value" aria-live="polite"><em id="v-where"></em><span>全壊は少なくとも</span><span class="num"><b id="v-min">0</b><i>棟</i></span></p>
         <p class="hero-note" id="v-note"></p>
       </div>
       <table class="byc" id="byc" hidden>
@@ -1178,6 +1179,7 @@ function locate(meta, k) {
 // ===== 画面 =====
 const $ = id => document.getElementById(id);
 const fmt = n => Math.round(n).toLocaleString('ja-JP');
+const pct = (a, n) => a > 0 && a / n < 0.01 ? '1%未満' : Math.round(a / n * 100) + '%';
 const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 const S_USE = 0.11;              // 較正のずれ（能登2024の検証で得た値）
 const MAX_BUILDINGS = 400000;    // 1つの市区町村で扱う建物の上限（つくば市で約20万棟）
@@ -1633,12 +1635,12 @@ function renderResult() {
   else {
     const kinds = PLATFORMS.map((p, k) => [p.name, done.filter(im => im.k === k).length]).filter(x => x[1]).map(x => x[0] + ' ' + x[1]).join('・');
     note.appendChild(document.createTextNode('画像 ' + done.length + ' 枚（' + kinds + '）'));
-    if (rows.length === 1) { const r = rows[0]; note.appendChild(document.createElement('br')); note.appendChild(document.createTextNode('建物 ' + fmt(r.m.B.n) + ' 棟のうち ' + fmt(r.a.obs) + ' 棟（' + Math.round(r.a.obs / r.m.B.n * 100) + '%）に画像あり')); }
+    if (rows.length === 1) { const r = rows[0]; note.appendChild(document.createElement('br')); note.appendChild(document.createTextNode('建物 ' + fmt(r.m.B.n) + ' 棟のうち ' + fmt(r.a.obs) + ' 棟（' + pct(r.a.obs, r.m.B.n) + '）に画像あり')); }
   }
   const tb = $('byc-body'); tb.textContent = ''; $('byc').hidden = rows.length < 2;
   rows.forEach(r => {
     const tr = document.createElement('tr');
-    [r.m.name, fmt(r.m.B.n), fmt(r.a.obs) + '（' + Math.round(r.a.obs / r.m.B.n * 100) + '%）', null].forEach((v, i) => {
+    [r.m.name, fmt(r.m.B.n), fmt(r.a.obs) + '（' + pct(r.a.obs, r.m.B.n) + '）', null].forEach((v, i) => {
       const td = document.createElement('td'); if (i) td.className = 'n';
       if (v == null) { const b = document.createElement('b'); b.textContent = fmt(r.L) + ' 棟'; td.appendChild(b); } else td.textContent = v;
       tr.appendChild(td);
