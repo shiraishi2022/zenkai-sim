@@ -1534,8 +1534,10 @@ async function judgeAerial(item, src, tick) {
   for (const j of jobs) { const k = Math.floor(j.box[0] / T) + ',' + Math.floor(j.box[1] / T); if (!groups.has(k)) groups.set(k, []); groups.get(k).push(j); }
   let done = 0;
   for (const list of groups.values()) {
-    const x0 = Math.max(0, Math.floor(Math.min(...list.map(j => j.box[0])))), y0 = Math.max(0, Math.floor(Math.min(...list.map(j => j.box[1]))));
-    const x1 = Math.min(src.W, Math.ceil(Math.max(...list.map(j => j.box[2])))), y1 = Math.min(src.H, Math.ceil(Math.max(...list.map(j => j.box[3]))));
+    // 補間の窓が切り出しの外にもかかるので、まわりに余白をつけて読む（画像全体から切り出したときと同じ値にするため）
+    const pad = j => Math.ceil(2 * Math.max(1, (j.box[2] - j.box[0]) / j.sp.n18)) + 3;
+    const x0 = Math.max(0, Math.floor(Math.min(...list.map(j => j.box[0] - pad(j))))), y0 = Math.max(0, Math.floor(Math.min(...list.map(j => j.box[1] - pad(j)))));
+    const x1 = Math.min(src.W, Math.ceil(Math.max(...list.map(j => j.box[2] + pad(j))))), y1 = Math.min(src.H, Math.ceil(Math.max(...list.map(j => j.box[3] + pad(j)))));
     const w = x1 - x0, h = y1 - y0, rgb = await src.read(x0, y0, w, h);
     for (let i = 0; i < list.length; i += 8) {
       const part = list.slice(i, i + 8), crops = [], keep = [];
