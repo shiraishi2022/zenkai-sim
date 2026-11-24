@@ -1180,7 +1180,7 @@ const $ = id => document.getElementById(id);
 const fmt = n => Math.round(n).toLocaleString('ja-JP');
 const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 const S_USE = 0.11;              // 較正のずれ（能登2024の検証で得た値）
-const MAX_BUILDINGS = 150000;    // 1つの市区町村で扱う建物の上限
+const MAX_BUILDINGS = 400000;    // 1つの市区町村で扱う建物の上限（つくば市で約20万棟）
 const MAX_TILES = 4000;          // 1つの市区町村で読む地図データ（ベクトルタイル）の枚数の上限
 const MAX_MUNIS = 4;             // 一度に扱う市区町村の数の上限
 const START = { lat: 36.0826, lon: 140.1118, zoom: 12 };   // つくば市
@@ -1259,7 +1259,7 @@ const BuildingLayer = L.Layer.extend({
       ctx.beginPath();
       for (let i = 0; i < list.length; i += 2) {
         const B = list[i].B, b = list[i + 1], r = B.sz[b] * S;
-        if (r < 3) { const cx = B.cx[b] * S - ox, cy = B.cy[b] * S - oy, h = z >= 13 ? 1.6 : 1.2; ctx.rect(cx - h, cy - h, 2 * h, 2 * h); continue; }
+        if (r < 3) { const cx = B.cx[b] * S - ox, cy = B.cy[b] * S - oy, h = z >= 14 ? 1.6 : z >= 13 ? 1.3 : z >= 12 ? 1 : 0.8; ctx.rect(cx - h, cy - h, 2 * h, 2 * h); continue; }
         for (let v = B.st[b]; v < B.st[b + 1]; v++) { const x = B.x[v] * S - ox, y = B.y[v] * S - oy; if (v === B.st[b]) ctx.moveTo(x, y); else ctx.lineTo(x, y); }
         ctx.closePath();
       }
