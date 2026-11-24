@@ -1354,7 +1354,7 @@ function readTile(buf, onBuilding, onRoad) {
   while (i < u8.length) {
     const k = v();
     if ((k >> 3) !== 3 || (k & 7) !== 2) { skip(k & 7); continue; }
-    const end = i + v(); let name = '', ext = 4096; const feats = [], keys = [], vals = [];
+    const len = v(), end = i + len; let name = '', ext = 4096; const feats = [], keys = [], vals = [];
     while (i < end) {
       const k2 = v(), t = k2 >> 3, w = k2 & 7;
       if (t === 1 && w === 2) { const l = v(); name = td.decode(u8.subarray(i, i + l)); i += l; if (name !== 'BldA' && name !== 'RdCL') { i = end; break; } }
