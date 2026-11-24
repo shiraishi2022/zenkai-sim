@@ -1181,7 +1181,7 @@ const fmt = n => Math.round(n).toLocaleString('ja-JP');
 const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 const S_USE = 0.11;              // 較正のずれ（能登2024の検証で得た値）
 const MAX_BUILDINGS = 400000;    // 1つの市区町村で扱う建物の上限（つくば市で約20万棟）
-const MAX_TILES = 4000;          // 1つの市区町村で読む地図データ（ベクトルタイル）の枚数の上限
+const MAX_TILES = 6000;          // 1つの市区町村で読む地図データ（ベクトルタイル）の枚数の上限
 const MAX_MUNIS = 4;             // 一度に扱う市区町村の数の上限
 const START = { lat: 36.0826, lon: 140.1118, zoom: 12 };   // つくば市
 const BASES = {
@@ -1189,7 +1189,7 @@ const BASES = {
   std:  { url: 'https://cyberjapandata.gsi.go.jp/xyz/std/{z}/{x}/{y}.png', attr: '<a href="https://maps.gsi.go.jp/development/ichiran.html" target="_blank" rel="noopener">地理院タイル</a>', max: 18 },
   osm:  { url: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png', attr: '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors', max: 19 },
 };
-const BV_URL = 'https://cyberjapandata.gsi.go.jp/xyz/optimal_bvmap-v1/16/';   // 地理院地図Vector（建物 BldA、道路 RdCL）。拡大16で建物の形がそろう
+const BV_ROOT = 'https://cyberjapandata.gsi.go.jp/xyz/optimal_bvmap-v1/';   // 地理院地図Vector（建物 BldA、道路 RdCL）。拡大16で建物の形がそろう
 const MAIN_ROAD = new Set(['国道', '都道府県道', '高速自動車国道等']), WIDE = new Set(['13m-19.5m未満', '19.5m以上']);
 const NOMINATIM = 'https://nominatim.openstreetmap.org/reverse';
 const state = { munis: [], current: null, images: [], queue: [], busy: false, total: 0, unknown: [], chain: Promise.resolve(), loading: false, sampleNo: [0, 0, 0, 0, 0] };
@@ -1388,21 +1388,37 @@ function readTile(buf, onBuilding, onRoad) {
   }
 }
 async function loadMuniTiles(info, tick) {
-  const Z = 16, N = 2 ** Z, b = info.bounds;
-  const tx0 = Math.floor(mercX(b.getWest()) * N), tx1 = Math.floor(mercX(b.getEast()) * N), ty0 = Math.floor(mercY(b.getNorth()) * N), ty1 = Math.floor(mercY(b.getSouth()) * N);
-  // 市区町村の境界（メルカトル）
+  const b = info.bounds;
+  // 市区町村の境界（メルカトル）。海の上まで境界が引かれている市町村もある
   const mr = info.rings.map(r => r.map(p => [mercX(p[1]), mercY(p[0])]));
   const inM = (X, Y) => { if (!mr.length) return true; for (const r of mr) { let c = false; for (let a = 0, j = r.length - 1; a < r.length; j = a++) if ((r[a][1] > Y) !== (r[j][1] > Y) && X < (r[j][0] - r[a][0]) * (Y - r[a][1]) / (r[j][1] - r[a][1]) + r[a][0]) c = !c; if (c) return true; } return false; };
+  const hits = (z, tx, ty) => {   // タイルが境界にかかるか（四隅・中心が中にある、または境界の点がタイルの中にある）
+    const N = 2 ** z, X0 = tx / N, Y0 = ty / N, X1 = (tx + 1) / N, Y1 = (ty + 1) / N;
+    if (!mr.length || [[X0, Y0], [X1, Y0], [X0, Y1], [X1, Y1], [(X0 + X1) / 2, (Y0 + Y1) / 2]].some(p => inM(p[0], p[1]))) return true;
+    return mr.some(r => r.some(p => p[0] >= X0 && p[0] <= X1 && p[1] >= Y0 && p[1] <= Y1));
+  };
+  const pool = async (list, n, job) => { let next = 0; await Promise.all(Array.from({ length: n }, async () => { while (next < list.length) await job(list[next++]); })); };
+  // 1) 拡大14で、データのあるタイル（陸）だけを選ぶ。海だけのタイルは 404 が返る
+  const N14 = 2 ** 14, c14 = [];
+  for (let tx = Math.floor(mercX(b.getWest()) * N14); tx <= Math.floor(mercX(b.getEast()) * N14); tx++) for (let ty = Math.floor(mercY(b.getNorth()) * N14); ty <= Math.floor(mercY(b.getSouth()) * N14); ty++) if (hits(14, tx, ty)) c14.push([tx, ty]);
+  if (c14.length > MAX_TILES) return { tooLarge: c14.length * 16 };
+  const land = []; let seen = 0;
+  await pool(c14, 16, async ([tx, ty]) => {
+    let sea = false, known = false;
+    for (let a = 0; a < 3 && !known; a++) {
+      try { const r = await fetch(BV_ROOT + '14/' + tx + '/' + ty + '.pbf', { method: 'HEAD' }); if (r.ok || r.status === 404) { known = true; sea = r.status === 404; } } catch (e) { /* もう一度 */ }
+      if (!known) await new Promise(res => setTimeout(res, 500 * (a + 1)));
+    }
+    if (!sea) land.push([tx, ty]);   // 答えが得られなかったタイルは、陸として扱う
+    tick(++seen, c14.length, 1);
+  });
+  // 2) 陸のタイルの子（拡大16）のうち、境界にかかるもの
   const tiles = [];
-  for (let tx = tx0; tx <= tx1; tx++) for (let ty = ty0; ty <= ty1; ty++) {
-    const X0 = tx / N, Y0 = ty / N, X1 = (tx + 1) / N, Y1 = (ty + 1) / N;
-    let hit = !mr.length || [[X0, Y0], [X1, Y0], [X0, Y1], [X1, Y1], [(X0 + X1) / 2, (Y0 + Y1) / 2]].some(p => inM(p[0], p[1]));
-    if (!hit) hit = mr.some(r => r.some(p => p[0] >= X0 && p[0] <= X1 && p[1] >= Y0 && p[1] <= Y1));
-    if (hit) tiles.push([tx, ty]);
-  }
+  for (const [px, py] of land) for (let dx = 0; dx < 4; dx++) for (let dy = 0; dy < 4; dy++) if (hits(16, px * 4 + dx, py * 4 + dy)) tiles.push([px * 4 + dx, py * 4 + dy]);
   if (tiles.length > MAX_TILES) return { tooLarge: tiles.length };
+  const N = 2 ** 16;
   const bx = [], by = [], st = [0], cx = [], cy = [], sz = [], roads = [];
-  let done = 0, failed = 0, next = 0, cut = 0;
+  let done = 0, failed = 0, cut = 0;
   const parse = (buf, tx, ty) => readTile(buf, (g, ext) => {
     // 輪の向き：面積が正（タイルの座標で時計回り）なら外側の輪＝1棟。穴は使わない
     let area = 0, sx = 0, sy = 0; const n = g.length / 2;
@@ -1417,20 +1433,24 @@ async function loadMuniTiles(info, tick) {
     for (let a = 0; a < n; a++) { const px = (tx + g[2 * a] / ext) / N, py = (ty + g[2 * a + 1] / ext) / N; bx.push(px); by.push(py); x0 = Math.min(x0, px); x1 = Math.max(x1, px); y0 = Math.min(y0, py); y1 = Math.max(y1, py); }
     st.push(bx.length); cx.push(X); cy.push(Y); sz.push(Math.max(x1 - x0, y1 - y0));
   }, (g, ext) => { const line = []; for (let a = 0; a < g.length; a += 2) line.push([(tx + g[a] / ext) / N, (ty + g[a + 1] / ext) / N]); roads.push(line); });
-  const worker = async () => {
-    while (next < tiles.length) {
-      const [tx, ty] = tiles[next++]; let ok = false;
-      for (let a = 0; a < 3 && !ok; a++) {
-        try { const r = await fetch(BV_URL + tx + '/' + ty + '.pbf'); if (r.status === 404) ok = true; else if (r.ok) { parse(new Uint8Array(await r.arrayBuffer()), tx, ty); ok = true; } }
-        catch (e) { /* もう一度 */ }
-        if (!ok) await new Promise(res => setTimeout(res, 600 * (a + 1)));
-      }
-      if (!ok) failed++;
-      tick(++done, tiles.length);
+  await pool(tiles, 12, async ([tx, ty]) => {
+    let ok = false;
+    for (let a = 0; a < 3 && !ok; a++) {
+      try { const r = await fetch(BV_ROOT + '16/' + tx + '/' + ty + '.pbf'); if (r.status === 404) ok = true; else if (r.ok) { parse(new Uint8Array(await r.arrayBuffer()), tx, ty); ok = true; } }
+      catch (e) { /* もう一度 */ }
+      if (!ok) await new Promise(res => setTimeout(res, 600 * (a + 1)));
     }
-  };
-  await Promise.all(Array.from({ length: 12 }, worker));
-  return { tiles: tiles.length, failed, cut, B: { n: cx.length, x: Float64Array.from(bx), y: Float64Array.from(by), st: Uint32Array.from(st), cx: Float64Array.from(cx), cy: Float64Array.from(cy), sz: Float32Array.from(sz) }, roads };
+    if (!ok) failed++;
+    tick(++done, tiles.length, 2);
+  });
+  // タイルの届いた順で並びが変わらないように、建物を北から南、西から東の順に並べ直す（同じ市区町村なら同じ模擬になる）
+  const n = cx.length, ord = Array.from({ length: n }, (_, i) => i).sort((a, c) => cy[a] - cy[c] || cx[a] - cx[c]);
+  const B = { n, x: new Float64Array(bx.length), y: new Float64Array(by.length), st: new Uint32Array(n + 1), cx: new Float64Array(n), cy: new Float64Array(n), sz: new Float32Array(n) };
+  let v = 0;
+  ord.forEach((o, i) => { B.st[i] = v; for (let k = st[o]; k < st[o + 1]; k++) { B.x[v] = bx[k]; B.y[v] = by[k]; v++; } B.cx[i] = cx[o]; B.cy[i] = cy[o]; B.sz[i] = sz[o]; });
+  B.st[n] = v;
+  roads.sort((a, c) => a[0][1] - c[0][1] || a[0][0] - c[0][0]);
+  return { tiles: tiles.length, failed, cut, B, roads };
 }
 async function ensureMuniAt(lat, lon) {
   let m = muniAt(lat, lon); if (m) return m;
@@ -1443,7 +1463,7 @@ async function ensureMuniAt(lat, lon) {
   const label = info.name + (info.pref ? '（' + info.pref + '）' : ''), t0 = Date.now();
   state.loading = true; renderButtons(); setArea(label + 'の建物を読み込んでいます…', 'run');
   let got = null;
-  try { got = await loadMuniTiles(info, (d, n) => { if (d % 10 === 0 || d === n) setArea(label + 'の建物を読み込んでいます… ' + Math.round(d / n * 100) + '%（地図データ ' + fmt(d) + ' / ' + fmt(n) + ' 枚）', 'run'); }); }
+  try { got = await loadMuniTiles(info, (d, n, stage) => { if (d % 10 === 0 || d === n) setArea(label + (stage === 1 ? 'の陸の範囲を調べています… ' : 'の建物を読み込んでいます… ') + Math.round(d / n * 100) + '%（地図データ ' + fmt(d) + ' / ' + fmt(n) + ' 枚）', 'run'); }); }
   catch (e) { console.error(e); }
   state.loading = false; renderButtons();
   if (!got) { setArea(label + 'の建物を読み込めませんでした。少し待ってから、もう一度試してください。', 'warn'); return null; }
