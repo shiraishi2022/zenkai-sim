@@ -11,8 +11,9 @@
 ## 使っているデータ
 
 - 背景の地図：OpenStreetMap（© OpenStreetMap contributors）、国土地理院の地理院地図（淡色地図・標準地図）
-- 建物の形：OpenStreetMap（Overpass APIで、市区町村ごとにそのつど読み込み。1市区町村10万棟まで）
-- 市区町村の境界：OpenStreetMap（Nominatimで読み込み）
+- 建物の形：国土地理院 地理院地図Vector（ベクトルタイル optimal_bvmap-v1、拡大16の建物 BldA）。市区町村ごとに、そのつど読み込みます（1市区町村15万棟・4,000タイルまで）
+- 主な道路：同じタイルの道路中心線 RdCL（模擬の撮影範囲を置くためにだけ使います）
+- 市区町村の境界：OpenStreetMap（Nominatimで読み込み。政令市は区単位）
 - 地図の表示：Leaflet 1.9.4（ページに同梱）
 
 ## 置き方
