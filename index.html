@@ -1181,7 +1181,7 @@ const fmt = n => Math.round(n).toLocaleString('ja-JP');
 const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 const S_USE = 0.11;              // 較正のずれ（能登2024の検証で得た値）
 const MAX_BUILDINGS = 400000;    // 1つの市区町村で扱う建物の上限（つくば市で約20万棟）
-const MAX_TILES = 6000;          // 1つの市区町村で読む地図データ（ベクトルタイル）の枚数の上限
+const MAX_TILES = 12000;         // 1つの市区町村で読む地図データ（ベクトルタイル）の枚数の上限（海の上の空のタイルも含む）
 const MAX_MUNIS = 4;             // 一度に扱う市区町村の数の上限
 const START = { lat: 36.0826, lon: 140.1118, zoom: 12 };   // つくば市
 const BASES = {
@@ -1433,7 +1433,7 @@ async function loadMuniTiles(info, tick) {
     for (let a = 0; a < n; a++) { const px = (tx + g[2 * a] / ext) / N, py = (ty + g[2 * a + 1] / ext) / N; bx.push(px); by.push(py); x0 = Math.min(x0, px); x1 = Math.max(x1, px); y0 = Math.min(y0, py); y1 = Math.max(y1, py); }
     st.push(bx.length); cx.push(X); cy.push(Y); sz.push(Math.max(x1 - x0, y1 - y0));
   }, (g, ext) => { const line = []; for (let a = 0; a < g.length; a += 2) line.push([(tx + g[a] / ext) / N, (ty + g[a + 1] / ext) / N]); roads.push(line); });
-  await pool(tiles, 12, async ([tx, ty]) => {
+  await pool(tiles, 16, async ([tx, ty]) => {
     let ok = false;
     for (let a = 0; a < 3 && !ok; a++) {
       try { const r = await fetch(BV_ROOT + '16/' + tx + '/' + ty + '.pbf'); if (r.status === 404) ok = true; else if (r.ok) { parse(new Uint8Array(await r.arrayBuffer()), tx, ty); ok = true; } }
