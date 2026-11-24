@@ -4,7 +4,8 @@
 <script>
 const log = s => { document.getElementById('log').textContent += '\n' + s; };
 ort.env.wasm.wasmPaths = 'https://cdn.jsdelivr.net/npm/onnxruntime-web@1.29.0/dist/';
-async function getModel(nm) { const parts = []; for (let i = 0; i < 2; i++) { const r = await fetch('../models/' + nm + '_fp16.onnx.part' + i); parts.push(new Uint8Array(await r.arrayBuffer())); } const n = parts.reduce((a, p) => a + p.length, 0), u = new Uint8Array(n); let o = 0; for (const p of parts) { u.set(p, o); o += p.length; } return u; }
+const BASE = new URLSearchParams(location.search).get('base') || '../models/';
+async function getModel(nm) { const man = await (await fetch(BASE + 'manifest.json')).json(); const parts = await Promise.all(man[nm].parts.map(async p => new Uint8Array(await (await fetch(BASE + p)).arrayBuffer()))); const n = parts.reduce((a, p) => a + p.length, 0), u = new Uint8Array(n); let o = 0; for (const p of parts) { u.set(p, o); o += p.length; } return u; }
 const f32 = async u => new Float32Array(await (await fetch(u)).arrayBuffer());
 window.RESULT = null;
 (async () => {
