@@ -1,0 +1,28 @@
+<!DOCTYPE html><html lang="ja"><head><meta charset="utf-8"><title>判定器の動作確認</title></head><body>
+<pre id="log">準備中…</pre>
+<script src="https://cdn.jsdelivr.net/npm/onnxruntime-web@1.29.0/dist/ort.webgpu.min.js"></script>
+<script>
+const log = s => { document.getElementById('log').textContent += '\n' + s; };
+ort.env.wasm.wasmPaths = 'https://cdn.jsdelivr.net/npm/onnxruntime-web@1.29.0/dist/';
+async function getModel(nm) { const parts = []; for (let i = 0; i < 2; i++) { const r = await fetch('../models/' + nm + '_fp16.onnx.part' + i); parts.push(new Uint8Array(await r.arrayBuffer())); } const n = parts.reduce((a, p) => a + p.length, 0), u = new Uint8Array(n); let o = 0; for (const p of parts) { u.set(p, o); o += p.length; } return u; }
+const f32 = async u => new Float32Array(await (await fetch(u)).arrayBuffer());
+window.RESULT = null;
+(async () => {
+  const out = { webgpu: !!navigator.gpu };
+  try { const ad = navigator.gpu && await navigator.gpu.requestAdapter(); out.adapter = !!ad; out.f16 = ad ? ad.features.has('shader-f16') : null; } catch (e) { out.adapterErr = String(e); }
+  const x = await f32('x2.bin');
+  for (const ep of (new URLSearchParams(location.search).get('ep') || 'webgpu').split(',')) for (const [nm, ref] of [['swin', 's2.bin'], ['clip', 'c2.bin']]) {
+    try {
+      const t0 = performance.now(), u = await getModel(nm), t1 = performance.now();
+      const s = await ort.InferenceSession.create(u, { executionProviders: [ep] }), t2 = performance.now();
+      const X = new ort.Tensor('float32', x, [2, 224, 224, 3]);
+      await s.run({ x: X }); const t3 = performance.now();
+      const y = (await s.run({ x: X })).f.data, t4 = performance.now(), r = await f32(ref);
+      let m = 0; for (let i = 0; i < y.length; i++) m = Math.max(m, Math.abs(y[i] - r[i]));
+      out[ep + '_' + nm] = { dl: Math.round(t1 - t0), create: Math.round(t2 - t1), first: Math.round(t3 - t2), run2: Math.round(t4 - t3), maxabs: m };
+    } catch (e) { out[ep + '_' + nm] = 'ERR ' + String(e).slice(0, 300); }
+    log(JSON.stringify(out));
+  }
+  window.RESULT = out;
+})();
+</script></body></html>
