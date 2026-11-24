@@ -1,0 +1,34 @@
+{
+ "swin": {
+  "parts": [
+   "swin_fp16.onnx.00",
+   "swin_fp16.onnx.01",
+   "swin_fp16.onnx.02",
+   "swin_fp16.onnx.03",
+   "swin_fp16.onnx.04",
+   "swin_fp16.onnx.05",
+   "swin_fp16.onnx.06",
+   "swin_fp16.onnx.07",
+   "swin_fp16.onnx.08",
+   "swin_fp16.onnx.09"
+  ],
+  "bytes": 177455184,
+  "sha256": "4abe0855ba0037907a5ae2346bbd75a6c1a9ff95bde16eaee643131939b9718d"
+ },
+ "clip": {
+  "parts": [
+   "clip_fp16.onnx.00",
+   "clip_fp16.onnx.01",
+   "clip_fp16.onnx.02",
+   "clip_fp16.onnx.03",
+   "clip_fp16.onnx.04",
+   "clip_fp16.onnx.05",
+   "clip_fp16.onnx.06",
+   "clip_fp16.onnx.07",
+   "clip_fp16.onnx.08",
+   "clip_fp16.onnx.09"
+  ],
+  "bytes": 172692095,
+  "sha256": "97319f9dd6831eac16ceaf922a38bb3a77d295f8f83e3c708642fce7fd21d854"
+ }
+}
