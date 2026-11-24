@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="referrer" content="strict-origin-when-cross-origin">
-<title>全壊棟数の最低値シミュレーター</title>
+<title>全壊棟数の最低値の推定（試作）</title>
 <style>
 /* required styles */
 
@@ -738,6 +738,8 @@ a { color: var(--accent-ink); text-underline-offset: 3px; }
 .munis { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; font-size: 13.5px; }
 .munis li { display: flex; justify-content: space-between; gap: 8px; }
 .munis li span { color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
+details li span.ng { color: var(--caution); }
+details li span.okk { color: var(--accent-ink); }
 details { border-top: 1px solid var(--hair); padding-top: 10px; font-size: 13px; }
 summary { cursor: pointer; color: var(--ink-2); }
 details ul { list-style: none; margin: 8px 0 0; padding: 0; display: flex; flex-direction: column; gap: 6px; max-height: 260px; overflow: auto; }
@@ -781,9 +783,9 @@ table.byc td.n b { color: var(--accent-ink); font-weight: 600; }
 <body>
 <div class="page">
   <header>
-    <p class="kicker">試作のシミュレーション</p>
-    <h1>全壊棟数の最低値シミュレーター</h1>
-    <p class="lede">衛星・航空機・ヘリコプター・ドローン・地上の画像をまとめて入れると、写っている場所の市区町村を自動で読み込み、「全壊は少なくとも何棟か」を市区町村ごとに地図にします。種類と位置の見分けと計算は、内部で行います。</p>
+    <p class="kicker">試作</p>
+    <h1>全壊棟数の最低値の推定</h1>
+    <p class="lede">被災地の画像をまとめて入れると、写っている場所の市区町村を読み込み、能登半島地震で学習した判定器で建物ごとの倒壊の確率を出して、「全壊は少なくとも何棟か」を市区町村ごとに地図にします。判定はすべて、このブラウザの中で行います。</p>
   </header>
 
   <div class="layout">
@@ -807,11 +809,12 @@ table.byc td.n b { color: var(--accent-ink); font-weight: 600; }
         </div>
       </div>
 
+      <p class="status" id="model" role="status">判定器は、最初に画像を入れたときに読み込みます（約94 MB、初回だけ）。</p>
       <div class="actions">
-        <button type="button" class="btn" id="btn-batch">模擬の画像を12枚入れる</button>
-        <button type="button" class="btn quiet" id="btn-reset">画像をすべて外す</button>
+        <button type="button" class="btn" id="btn-sample">能登の地震後の航空写真で試す</button>
+        <button type="button" class="btn quiet" id="btn-reset">判定をすべて消す</button>
       </div>
-      <p class="small">位置情報のない画像と模擬の画像は、地図の中心にある市区町村に入れます。</p>
+      <p class="small">判定できるのは、航空写真のオルソ画像（位置情報つきのGeoTIFF）と、位置と撮影方向の記録がある地上の写真です。衛星・ヘリコプター・ドローンの画像は、判定器がないため数に入れません。「試す」は、国土地理院が公開している2024年1月2日の珠洲市宝立町鵜飼の正射画像（約490 m四方）を使います。</p>
 
       <div class="sep">
         <h3>対象の市区町村</h3>
@@ -821,7 +824,7 @@ table.byc td.n b { color: var(--accent-ink); font-weight: 600; }
       </div>
 
       <details id="detail">
-        <summary id="detail-sum">種類と位置の判定の内訳</summary>
+        <summary id="detail-sum">取り込んだ画像と判定の内訳</summary>
         <ul id="detail-list"></ul>
       </details>
     </section>
@@ -845,19 +848,18 @@ table.byc td.n b { color: var(--accent-ink); font-weight: 600; }
         <thead><tr><th>市区町村</th><th class="n">建物</th><th class="n">画像あり</th><th class="n">全壊は少なくとも</th></tr></thead>
         <tbody id="byc-body"></tbody>
       </table>
-      <div id="map" role="application" aria-label="実在の地図に、建物ごとの倒壊の確率（模擬）と市区町村の境界を重ねた地図"></div>
+      <div id="map" role="application" aria-label="地図に、建物ごとの倒壊の確率と市区町村の境界を重ねた地図"></div>
       <div class="legend" aria-hidden="true">
         <span class="item">倒壊の確率 0 <span class="rampbar"></span> 1</span>
-        <span class="item"><span class="sw"></span>画像がない建物</span>
+        <span class="item"><span class="sw"></span>判定していない建物</span>
         <span class="item"><span class="munikey"></span>市区町村の境界</span>
-        <span class="item"><span class="linekey"></span>最後に入れた画像の範囲</span>
-        <span class="item"><span class="cloudkey"></span>雲で見えない範囲</span>
+        <span class="item"><span class="linekey"></span>最後に判定した画像の範囲</span>
       </div>
       <p class="small" id="osm-note" hidden>OpenStreetMapの地図は、このファイルをWebサーバーに置いたときだけ表示されます。パソコンの中のファイルを直接開いた場合は、地理院地図を使ってください。</p>
     </section>
   </div>
 
-  <p class="foot"><strong>建物の被害は模擬です。実際の被害ではありません。</strong>背景の地図は国土地理院の地理院地図とOpenStreetMap、建物の形は国土地理院の地理院地図Vector（ベクトルタイル）、市区町村の境界はOpenStreetMap（Nominatimで読み込み）のデータです。倒壊の確率は乱数で作っています。入れた画像は、種類と位置を見分けるためにだけ読み、中身は解析しません。画像のファイルはどこにも送りません。市区町村を調べるために、撮影位置の緯度・経度（約100 mに丸めた値）だけをNominatimに送ります。</p>
+  <p class="foot"><strong>試作です。判定は能登半島地震（2024年）のデータで学習した判定器によるもので、ほかの地震や撮影条件では精度が下がるおそれがあります。</strong>判定器は Swin-B（ImageNet-22k）の特徴量とロジスティック回帰で、全壊（D5以上）である確率を出します。航空写真は悉皆調査4,812棟と国土地理院の正射画像（2024年1月）で学習し、交差検証のAUCは0.81です。地上の写真は悉皆調査232棟とiPhone・ドラレコの写真で学習し、AUCは0.86です。最低値は、確率の合計から、ばらつきと較正のずれ（11%）を差し引いた値です。背景の地図は国土地理院の地理院地図とOpenStreetMap、建物の形は地理院地図Vector、市区町村の境界はOpenStreetMap（Nominatim）のデータです。画像のファイルはどこにも送りません。市区町村を調べるために、撮影位置の緯度・経度（約100 mに丸めた値）だけをNominatimに送ります。</p>
 </div>
 
 <script>
@@ -869,151 +871,6 @@ table.byc td.n b { color: var(--accent-ink); font-weight: 600; }
 //# sourceMappingURL=leaflet.js.map
 </script>
 <script>
-/*CORE-START*/
-// ===== 模擬の計算（画面には触らない）。建物の位置は実在のもの、被害と確率は模擬 =====
-// 座標は、市区町村の範囲の北西の角を原点にしたメートル（x：東、y：南）。市区町村ごとに1つずつ作る
-const Z95 = 1.645, S_TRUE = 0.11;
-const PLATFORMS = [   // 見分ける力の低い順
-  { id: 'sat',    name: '衛星',         v: 0.22, hi: 2.6, lo: 0.55 },
-  { id: 'air',    name: '航空機',       v: 0.41, hi: 3.0, lo: 0.70 },
-  { id: 'heli',   name: 'ヘリコプター', v: 0.55, hi: 3.2, lo: 0.80 },
-  { id: 'ground', name: '地上',         v: 0.62, hi: 3.3, lo: 0.85 },
-  { id: 'drone',  name: 'ドローン',     v: 0.68, hi: 3.4, lo: 0.90 },
-];
-const DISTRICT_RATES = [0.20, 0.11, 0.03, 0.14, 0.07, 0.02];
-
-function mulberry32(a) {
-  return function () { a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; };
-}
-const lerp = (a, b, t) => a + (b - a) * t;
-function inPoly(pts, x, y) {
-  let c = false;
-  for (let i = 0, j = pts.length - 1; i < pts.length; j = i++) {
-    const a = pts[i], b = pts[j];
-    if ((a.y > y) !== (b.y > y) && x < (b.x - a.x) * (y - a.y) / (b.y - a.y) + a.x) c = !c;
-  }
-  return c;
-}
-function distSeg(a, b, x, y) {
-  const dx = b.x - a.x, dy = b.y - a.y, l2 = dx * dx + dy * dy; let t = l2 ? ((x - a.x) * dx + (y - a.y) * dy) / l2 : 0; t = Math.max(0, Math.min(1, t));
-  return Math.hypot(x - (a.x + t * dx), y - (a.y + t * dy));
-}
-function distLine(line, x, y) { let d = Infinity; for (let i = 0; i + 1 < line.length; i++) d = Math.min(d, distSeg(line[i], line[i + 1], x, y)); return d; }
-const lineLength = line => { let s = 0; for (let i = 0; i + 1 < line.length; i++) s += Math.hypot(line[i + 1].x - line[i].x, line[i + 1].y - line[i].y); return s; };
-function aucOf(p, truth) {
-  const n = p.length, idx = Array.from({ length: n }, (_, i) => i).sort((i, j) => p[i] - p[j]);
-  let rankSum = 0, pos = 0; for (let r = 0; r < n; r++) if (truth[idx[r]]) { rankSum += r + 1; pos++; }
-  const neg = n - pos; return pos && neg ? (rankSum - pos * (pos + 1) / 2) / (pos * neg) : NaN;
-}
-// 道路を約400 mごとに区切る（ヘリコプターと地上の撮影範囲に使う）
-function cutRoads(roads, W, H) {
-  const chunks = [];
-  roads.slice().sort((a, b) => lineLength(b) - lineLength(a)).forEach(rd => {
-    let cur = [rd[0]], len = 0;
-    for (let i = 1; i < rd.length; i++) { len += Math.hypot(rd[i].x - rd[i - 1].x, rd[i].y - rd[i - 1].y); cur.push(rd[i]); if (len >= 400) { chunks.push(cur); cur = [rd[i]]; len = 0; } }
-    if (len >= 150) chunks.push(cur);
-  });
-  if (chunks.length) return chunks;
-  // 道路のデータがないときは、範囲を横切る線を2本使う
-  const out = []; [[0.3, 0.4], [0.7, 0.6]].forEach(([y0, y1]) => { for (let i = 0; i < 3; i++) out.push([{ x: W * i / 3, y: H * lerp(y0, y1, i / 3) }, { x: W * (i + 1) / 3, y: H * lerp(y0, y1, (i + 1) / 3) }]); });
-  return out;
-}
-
-function createWorld(seed, X, Y, roads, W, H) {
-  const rand = mulberry32(seed), N = X.length;
-  const normal = () => { let u = 0; while (u === 0) u = rand(); return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * rand()); };
-  // 範囲を6つに分け、被害の割合を変える（この違いは判定器には教えない）
-  const cutT = [W * (0.30 + 0.07 * rand()), W * (0.62 + 0.07 * rand())], cutB = [W * (0.30 + 0.07 * rand()), W * (0.62 + 0.07 * rand())];
-  const yL = H * (0.44 + 0.12 * rand()), yR = H * (0.44 + 0.12 * rand());
-  const districtOf = (x, y) => (y < lerp(yL, yR, x / W) ? 0 : 3) + (x < lerp(cutT[0], cutB[0], y / H) ? 0 : x < lerp(cutT[1], cutB[1], y / H) ? 1 : 2);
-  const rates = DISTRICT_RATES.map(r => r * (0.75 + 0.5 * rand()));
-  const D = new Uint8Array(N); for (let b = 0; b < N; b++) D[b] = districtOf(X[b], Y[b]);
-  // 被害の濃淡と、模擬の正解
-  const bumps = Array.from({ length: 5 }, () => ({ x: rand() * W, y: rand() * H, r: W * (0.11 + 0.12 * rand()), a: 0.5 + rand() * 0.5 }));
-  const g = new Float32Array(N); let gmax = 1e-9;
-  for (let b = 0; b < N; b++) { let s = 0; for (const m of bumps) { const dx = X[b] - m.x, dy = Y[b] - m.y; s += m.a * Math.exp(-(dx * dx + dy * dy) / (2 * m.r * m.r)); } g[b] = s; if (s > gmax) gmax = s; }
-  const truth = new Uint8Array(N); let nTrue = 0;
-  for (let b = 0; b < N; b++) { const r = Math.min(0.9, rates[D[b]] * (0.3 + 1.6 * g[b] / gmax)); if (rand() < r) { truth[b] = 1; nTrue++; } }
-  const pi = Math.max(nTrue, 1) / N;
-  // 模擬の判定器：種類ごとに、建物ごとの確率を1回だけ決める
-  const U = new Float32Array(N), E = new Float32Array(N);
-  for (let b = 0; b < N; b++) { U[b] = rand(); E[b] = normal(); }
-  const logit = p => Math.log(p / (1 - p)), sig = t => 1 / (1 + Math.exp(-t));
-  const P = PLATFORMS.map(pl => {
-    const l0 = new Float32Array(N); let sum0 = 0;
-    for (let b = 0; b < N; b++) {
-      const mu = truth[b] ? (U[b] < pl.v ? pl.hi : pl.lo) : 0;
-      const z = mu + Math.SQRT1_2 * E[b] + Math.SQRT1_2 * normal();
-      const lr = pl.v * Math.exp(pl.hi * z - pl.hi * pl.hi / 2) + (1 - pl.v) * Math.exp(pl.lo * z - pl.lo * pl.lo / 2);
-      const p0 = Math.min(1 - 1e-6, Math.max(1e-6, pi * lr / (pi * lr + 1 - pi)));
-      l0[b] = logit(p0); sum0 += p0;
-    }
-    // 較正のずれ：確率の合計が全体として exp(N(0, S_TRUE)) 倍ずれるように、対数オッズをずらす
-    const target = sum0 * Math.exp(S_TRUE * normal());
-    let lo = -4, hi = 4;
-    for (let it = 0; it < 44; it++) { const mid = (lo + hi) / 2; let s = 0; for (let b = 0; b < N; b++) s += sig(l0[b] + mid); if (s < target) lo = mid; else hi = mid; }
-    const d = (lo + hi) / 2, p = new Float32Array(N);
-    for (let b = 0; b < N; b++) p[b] = sig(l0[b] + d);
-    return p;
-  });
-  const aucs = P.map(p => aucOf(p, truth));
-  // 撮影範囲（種類ごとに、入れた順に次の範囲を使う）
-  const rect = (x0, y0, x1, y1) => [{ x: x0, y: y0 }, { x: x1, y: y0 }, { x: x1, y: y1 }, { x: x0, y: y1 }];
-  const cloud = cx => ({ cx, cy: H * (0.25 + 0.5 * rand()), rx: W * (0.09 + 0.04 * rand()), ry: H * (0.09 + 0.05 * rand()) });
-  const chunks = cutRoads(roads, W, H).slice(0, 12), segs = w => chunks.map(line => ({ line, width: w }));
-  const cell = 250, cnt = new Map();
-  for (let b = 0; b < N; b++) { const k = Math.floor(X[b] / cell) + ',' + Math.floor(Y[b] / cell); cnt.set(k, (cnt.get(k) || 0) + 1); }
-  const dense = Array.from(cnt.entries()).sort((a, b) => b[1] - a[1]).slice(0, 10).map(([k]) => { const [gx, gy] = k.split(',').map(Number), cx = (gx + 0.5) * cell, cy = (gy + 0.5) * cell; return { poly: rect(cx - 150, cy - 110, cx + 150, cy + 110) }; });
-  const fps = [
-    [ { poly: rect(-50, -50, W * 0.62, H + 50), cloud: cloud(W * (0.22 + 0.22 * rand())) }, { poly: rect(W * 0.55, -50, W + 50, H + 50), cloud: cloud(W * (0.70 + 0.2 * rand())) }, { poly: rect(-50, -50, W * 0.62, H + 50) }, { poly: rect(W * 0.55, -50, W + 50, H + 50) } ],
-    Array.from({ length: 6 }, (_, i) => { const x0 = W * (-0.02 + i * 0.172), w = W * 0.196, t = W * 0.028; return { poly: [{ x: x0 + t, y: -50 }, { x: x0 + w + t, y: -50 }, { x: x0 + w - t, y: H + 50 }, { x: x0 - t, y: H + 50 }] }; }),
-    segs(80),
-    segs(30),
-    dense,
-  ];
-  const world = { seed, N, X, Y, D, truth, nTrue, P, aucs, fps, W, H };
-  fps.forEach(list => list.forEach(fp => { fp.members = membersOf(world, fp); }));
-  const dTruth = new Array(6).fill(0); for (let b = 0; b < N; b++) dTruth[D[b]] += truth[b];
-  world.dTruth = dTruth; return world;
-}
-// 撮影範囲（多角形 poly か、幅 width の帯 line）に入る建物。外接の四角で先にふるう
-function membersOf(world, fp) {
-  const pts = fp.poly || fp.line, pad = fp.line ? fp.width : 0, X = world.X, Y = world.Y, m = [];
-  let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
-  for (const p of pts) { x0 = Math.min(x0, p.x); y0 = Math.min(y0, p.y); x1 = Math.max(x1, p.x); y1 = Math.max(y1, p.y); }
-  x0 -= pad; y0 -= pad; x1 += pad; y1 += pad;
-  for (let b = 0; b < world.N; b++) {
-    const x = X[b], y = Y[b];
-    if (x < x0 || x > x1 || y < y0 || y > y1) continue;
-    if (!(fp.line ? distLine(fp.line, x, y) <= fp.width : inPoly(fp.poly, x, y))) continue;
-    if (fp.cloud) { const ex = (x - fp.cloud.cx) / fp.cloud.rx, ey = (y - fp.cloud.cy) / fp.cloud.ry; if (ex * ex + ey * ey <= 1) continue; }
-    m.push(b);
-  }
-  return m;
-}
-
-// 1枚を取り込む：範囲内の建物について、より見分ける力の高い種類なら置き換える。変わった建物を返す
-function applyImage(world, best, k, fp) {
-  const changed = [];
-  for (const b of fp.members) if (best[b] < k) { best[b] = k; changed.push(b); }
-  return changed;
-}
-function tally(world, best) {
-  const mk = () => ({ obs: 0, flagged: 0, Sall: 0, Vall: 0, Shi: 0, Vhi: 0 });
-  const all = mk(), d = Array.from({ length: 6 }, mk);
-  for (let b = 0; b < world.N; b++) {
-    const k = best[b]; if (k < 0) continue;
-    const p = world.P[k][b], v = p * (1 - p);
-    for (const t of [all, d[world.D[b]]]) { t.obs++; t.Sall += p; t.Vall += v; if (p >= 0.5) { t.flagged++; t.Shi += p; t.Vhi += v; } }
-  }
-  return { all, d };
-}
-function lowerBound(t, mode, s) {
-  const S = mode === 'hi' ? t.Shi : t.Sall, V = mode === 'hi' ? t.Vhi : t.Vall;
-  return Math.max(0, S - Z95 * Math.sqrt(V + (s * S) * (s * S)));
-}
-/*CORE-END*/
-
 /*META-START*/// ===== 画像の種類と位置の判定（画像のメタデータを実際に読む） =====
 const SAT = 0, AIR = 1, HELI = 2, GROUND = 3, DRONE = 4;
 function ifdEntries(dv, off, le) {
@@ -1034,6 +891,9 @@ function parseExif(u8, meta) {
   if (dv.getUint16(2, le) !== 42) return;
   const ifd0 = ifdEntries(dv, dv.getUint32(4, le), le);
   meta.make = exifAscii(dv, ifd0[0x010F], le); meta.model = exifAscii(dv, ifd0[0x0110], le);
+  if (ifd0[0x0112]) meta.orient = dv.getUint16(ifd0[0x0112].pos, le);
+  const ex = ifd0[0x8769];   // Exif の詳細：35mm換算の焦点距離
+  if (ex) { const e = ifdEntries(dv, dv.getUint32(ex.pos, le), le); if (e[0xA405]) { const f = dv.getUint16(e[0xA405].pos, le); if (f > 0) meta.focal35 = f; } }
   const g = ifd0[0x8825]; if (!g) return;
   const gps = ifdEntries(dv, dv.getUint32(g.pos, le), le);
   const rat = (ent, n) => {   // 有理数 n 個（度・分・秒など）
@@ -1044,6 +904,8 @@ function parseExif(u8, meta) {
   const ref = ent => ent ? String.fromCharCode(dv.getUint8(ent.pos)) : '';
   const lat = rat(gps[2], 3), lon = rat(gps[4], 3);
   if (lat != null && lon != null && (lat || lon)) { meta.lat = ref(gps[1]) === 'S' ? -lat : lat; meta.lon = ref(gps[3]) === 'W' ? -lon : lon; }
+  const dir = rat(gps[17], 1);   // 撮影方向（真北または磁北からの角度）
+  if (dir != null && isFinite(dir)) { meta.dir = dir; meta.dirRef = ref(gps[16]) || 'T'; }
   const alt = rat(gps[6], 1);
   if (alt != null) meta.alt = (gps[5] && dv.getUint8(gps[5].pos) === 1 ? -1 : 1) * alt;   // 海抜の高さ（m）
 }
@@ -1099,6 +961,30 @@ function projToLL(epsg) {
   return null;
 }
 const inJapan = p => p[0] > 19 && p[0] < 47 && p[1] > 121 && p[1] < 155;
+function tmForward(lat, lon, lat0, lon0, k0, FE, FN) {   // 横メルカトルの順算（GRS80）。返り値 [東, 北]
+  const a = 6378137, f = 1 / 298.257222101, e2 = f * (2 - f), ep2 = e2 / (1 - e2), r = Math.PI / 180;
+  const A0 = 1 - e2 / 4 - 3 * e2 * e2 / 64 - 5 * e2 ** 3 / 256;
+  const merid = p => a * (A0 * p - (3 * e2 / 8 + 3 * e2 * e2 / 32 + 45 * e2 ** 3 / 1024) * Math.sin(2 * p) + (15 * e2 * e2 / 256 + 45 * e2 ** 3 / 1024) * Math.sin(4 * p) - (35 * e2 ** 3 / 3072) * Math.sin(6 * p));
+  const p = lat * r, s = Math.sin(p), c = Math.cos(p), T = Math.tan(p) ** 2, C = ep2 * c * c, Nn = a / Math.sqrt(1 - e2 * s * s), A = (lon - lon0) * r * c;
+  const E = FE + k0 * Nn * (A + (1 - T + C) * A ** 3 / 6 + (5 - 18 * T + T * T + 72 * C - 58 * ep2) * A ** 5 / 120);
+  const N = FN + k0 * (merid(p) - merid(lat0 * r) + Nn * Math.tan(p) * (A * A / 2 + (5 - T + 9 * C + 4 * C * C) * A ** 4 / 24 + (61 - 58 * T + T * T + 600 * C - 330 * ep2) * A ** 6 / 720));
+  return [E, N];
+}
+// EPSGの番号から、経緯度 → 投影座標（x：東、y：北）の変換を返す。経緯度の座標系は [経度, 緯度]
+function llToProj(epsg, geographic) {
+  if (geographic) return (lat, lon) => [lon, lat];
+  const plane = z => (lat, lon) => tmForward(lat, lon, PLANE_ORIGIN[z - 1][0], PLANE_ORIGIN[z - 1][1], 0.9999, 0, 0);
+  const utm = z => (lat, lon) => tmForward(lat, lon, 0, -183 + 6 * z, 0.9996, 500000, 0);
+  if (epsg >= 6669 && epsg <= 6687) return plane(epsg - 6668);
+  if (epsg >= 2443 && epsg <= 2461) return plane(epsg - 2442);
+  if (epsg >= 30161 && epsg <= 30179) return plane(epsg - 30160);
+  if (epsg >= 32651 && epsg <= 32656) return utm(epsg - 32600);
+  if (epsg >= 6688 && epsg <= 6692) return utm(epsg - 6637);
+  if (epsg >= 3097 && epsg <= 3101) return utm(epsg - 3046);
+  if (epsg >= 3092 && epsg <= 3096) return utm(epsg - 3041);
+  if (epsg === 3857 || epsg === 900913 || epsg === 3785) return (lat, lon) => [lon * Math.PI / 180 * 6378137, Math.log(Math.tan(Math.PI / 4 + lat * Math.PI / 360)) * 6378137];
+  return null;
+}
 
 async function parseTiff(file, head, meta) {
   const le = head[0] === 0x49, dvh = new DataView(head.buffer, head.byteOffset, head.byteLength);
@@ -1128,9 +1014,9 @@ async function parseTiff(file, head, meta) {
   const x0 = tp[3] - tp[0] * sx, y0 = tp[4] + tp[1] * sy, x1 = x0 + W * sx, y1 = y0 - H * sy;
   let conv = geographic ? (x, y) => [y, x] : projToLL(keys[3072]);
   if (!conv) { meta.crsUnknown = keys[3072] || 0; return; }
-  let ring = [[x0, y0], [x1, y0], [x1, y1], [x0, y1]].map(([x, y]) => conv(x, y));
-  if (!ring.every(inJapan)) { const sw = [[x0, y0], [x1, y0], [x1, y1], [x0, y1]].map(([x, y]) => conv(y, x)); if (sw.every(inJapan)) ring = sw; }   // x と y の入れ替わりに備える
-  if (ring.every(p => isFinite(p[0]) && isFinite(p[1]))) meta.ring = ring;
+  let ring = [[x0, y0], [x1, y0], [x1, y1], [x0, y1]].map(([x, y]) => conv(x, y)), swap = false;
+  if (!ring.every(inJapan)) { const sw = [[x0, y0], [x1, y0], [x1, y1], [x0, y1]].map(([x, y]) => conv(y, x)); if (sw.every(inJapan)) { ring = sw; swap = true; } }   // x と y の入れ替わりに備える
+  if (ring.every(p => isFinite(p[0]) && isFinite(p[1]))) { meta.ring = ring; meta.geo = { x0, y0, sx, sy, W, H, epsg: keys[3072] || 0, geographic, swap }; }
 }
 async function readMeta(file) {
   const meta = {};
@@ -1176,6 +1062,46 @@ function locate(meta, k) {
 }
 /*META-END*/
 
+// PIL（Pillow）と同じ考え方の双三次補間（a = -0.5）。縮小のときは、倍率に合わせて窓を広げる（エイリアスを防ぐ）
+// src：RGB の Uint8Array（幅 sw、高さ sh）。box：[x0, y0, x1, y1]（画素の座標、小数可）。返り値：幅 dw × 高さ dh の Float32Array（0〜255、RGB）
+function cubicW(x) { const a = -0.5; x = Math.abs(x); return x < 1 ? ((a + 2) * x - (a + 3)) * x * x + 1 : x < 2 ? (((x - 5) * x + 8) * x - 4) * a : 0; }
+function coeffs(inSize, in0, in1, outSize) {
+  const scale = (in1 - in0) / outSize, fs = Math.max(scale, 1), support = 2 * fs, out = [];
+  for (let xx = 0; xx < outSize; xx++) {
+    const center = in0 + (xx + 0.5) * scale; let xmin = Math.max(0, Math.floor(center - support + 0.5)), xmax = Math.min(inSize, Math.floor(center + support + 0.5));
+    const w = []; let tot = 0;
+    for (let x = xmin; x < xmax; x++) { const v = cubicW((x - center + 0.5) / fs); w.push(v); tot += v; }
+    if (tot) for (let i = 0; i < w.length; i++) w[i] /= tot;
+    out.push({ xmin, w });
+  }
+  return out;
+}
+function resizeRGB(src, sw, sh, box, dw, dh) {
+  const [x0, y0, x1, y1] = box, cx = coeffs(sw, x0, x1, dw), cy = coeffs(sh, y0, y1, dh);
+  const ya = cy[0].xmin, yb = cy[dh - 1].xmin + cy[dh - 1].w.length;   // 縦に必要な行だけ横方向を計算する
+  const tmp = new Float32Array((yb - ya) * dw * 3);
+  for (let y = ya; y < yb; y++) {
+    const row = y * sw * 3, o = (y - ya) * dw * 3;
+    for (let xx = 0; xx < dw; xx++) {
+      const { xmin, w } = cx[xx]; let r = 0, g = 0, b = 0;
+      for (let k = 0; k < w.length; k++) { const p = row + (xmin + k) * 3, ww = w[k]; r += src[p] * ww; g += src[p + 1] * ww; b += src[p + 2] * ww; }
+      // PIL は横の計算のあと 0〜255 に丸める
+      tmp[o + xx * 3] = Math.min(255, Math.max(0, Math.round(r))); tmp[o + xx * 3 + 1] = Math.min(255, Math.max(0, Math.round(g))); tmp[o + xx * 3 + 2] = Math.min(255, Math.max(0, Math.round(b)));
+    }
+  }
+  const dst = new Float32Array(dw * dh * 3);
+  for (let yy = 0; yy < dh; yy++) {
+    const { xmin, w } = cy[yy], o = yy * dw * 3;
+    for (let i = 0; i < dw * 3; i++) {
+      let s = 0; for (let k = 0; k < w.length; k++) s += tmp[(xmin + k - ya) * dw * 3 + i] * w[k];
+      dst[o + i] = Math.min(255, Math.max(0, Math.round(s)));
+    }
+  }
+  return dst;
+}
+
+
+
 // ===== 画面 =====
 const $ = id => document.getElementById(id);
 const fmt = n => Math.round(n).toLocaleString('ja-JP');
@@ -1194,7 +1120,7 @@ const BASES = {
 const BV_ROOT = 'https://cyberjapandata.gsi.go.jp/xyz/optimal_bvmap-v1/';   // 地理院地図Vector（建物 BldA、道路 RdCL）。拡大16で建物の形がそろう
 const MAIN_ROAD = new Set(['国道', '都道府県道', '高速自動車国道等']), WIDE = new Set(['13m-19.5m未満', '19.5m以上']);
 const NOMINATIM = 'https://nominatim.openstreetmap.org/reverse';
-const state = { munis: [], current: null, images: [], queue: [], busy: false, total: 0, unknown: [], chain: Promise.resolve(), loading: false, sampleNo: [0, 0, 0, 0, 0] };
+const state = { munis: [], images: [], unknown: [], chain: Promise.resolve(), loading: false };
 
 // ---- 地図 ----
 const map = L.map('map').setView([START.lat, START.lon], START.zoom);
@@ -1203,7 +1129,7 @@ map.attributionControl.setPrefix('<a href="https://leafletjs.com" target="_blank
 map.createPane('bpane').style.zIndex = 390; map.getPane('bpane').classList.add('bpane');   // 建物は境界線・撮影範囲の下
 const lineGroup = L.layerGroup().addTo(map), fpGroup = L.layerGroup().addTo(map);
 const tag = L.control({ position: 'topright' });
-tag.onAdd = () => { const d = L.DomUtil.create('div', 'simtag'); d.textContent = '建物の被害は模擬です'; return d; };
+tag.onAdd = () => { const d = L.DomUtil.create('div', 'simtag'); d.textContent = '試作：能登2024で学習した判定器'; return d; };
 tag.addTo(map);
 let baseLayer = null;
 function setBase(key) {
@@ -1213,6 +1139,7 @@ function setBase(key) {
   baseLayer.bringToBack();
   $('osm-note').hidden = !(key === 'osm' && location.protocol === 'file:');
 }
+const lerp = (a, b, t) => a + (b - a) * t;
 const RAMP = [[247, 205, 181], [240, 165, 126], [229, 122, 74], [204, 85, 36], [161, 58, 18], [110, 36, 8]];
 function rampColor(p) {
   const t = Math.max(0, Math.min(1, p)) * 5, i = Math.min(4, Math.floor(t)), f = t - i, a = RAMP[i], b = RAMP[i + 1];
@@ -1252,9 +1179,9 @@ const BuildingLayer = L.Layer.extend({
       for (let b = 0; b < B.n; b++) {
         const cx = B.cx[b] * S - ox, cy = B.cy[b] * S - oy, r = B.sz[b] * S, pad = Math.max(40, r);
         if (cx < -pad || cy < -pad || cx > sz.x + pad || cy > sz.y + pad) continue;
-        const k = mu.best[b];
-        if (k < 0) { fills[NBIN].push(mu, b); continue; }
-        const p = mu.world.P[k][b]; fills[Math.min(NBIN - 1, Math.floor(p * NBIN))].push(mu, b); if (p >= 0.5) strong.push(mu, b);
+        const p = mu.P[b];
+        if (p !== p) { fills[NBIN].push(mu, b); continue; }
+        fills[Math.min(NBIN - 1, Math.floor(p * NBIN))].push(mu, b); if (p >= 0.5) strong.push(mu, b);
       }
     }
     const path = (list) => {
@@ -1295,19 +1222,14 @@ function onHover(e) {
   hoverReq = requestAnimationFrame(() => {
     const h = map.getZoom() >= 15 ? hitTest(e.latlng) : null;
     if (!h) { if (map.hasLayer(tip)) map.removeLayer(tip); return; }
-    const k = h.mu.best[h.b];
-    tip.setLatLng(e.latlng).setContent(k < 0 ? h.mu.name + '｜画像がない建物（数に入れない）' : h.mu.name + '｜倒壊の確率 ' + h.mu.world.P[k][h.b].toFixed(2) + '（模擬）<br>使った画像：' + PLATFORMS[k].name);
+    const p = h.mu.P[h.b];
+    tip.setLatLng(e.latlng).setContent(p !== p ? h.mu.name + '｜判定していない建物（数に入れない）' : h.mu.name + '｜倒壊の確率 ' + p.toFixed(2) + '<br>判定に使った画像：' + (h.mu.src[h.b] === 2 ? '地上の写真' : '航空写真'));
     if (!map.hasLayer(tip)) tip.addTo(map);
   });
 }
 map.on('mousemove click', onHover);
 map.on('mouseout zoomstart', () => { if (map.hasLayer(tip)) map.removeLayer(tip); });
 
-// 経緯度 ⇔ 範囲の北西の角を原点にしたメートル
-function makePlane(bounds) {
-  const lat0 = bounds.getCenter().lat, mx = 111320 * Math.cos(lat0 * Math.PI / 180), my = 110540, west = bounds.getWest(), north = bounds.getNorth();
-  return { W: (bounds.getEast() - west) * mx, H: (north - bounds.getSouth()) * my, toXY: (lat, lon) => ({ x: (lon - west) * mx, y: (north - lat) * my }), toLL: p => [north - p.y / my, west + p.x / mx] };
-}
 function inRingLL(ring, lat, lon) {
   let c = false;
   for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) { const a = ring[i], b = ring[j]; if ((a[0] > lat) !== (b[0] > lat) && lon < (b[1] - a[1]) * (lat - a[0]) / (b[0] - a[0]) + a[1]) c = !c; }
@@ -1475,113 +1397,311 @@ async function ensureMuniAt(lat, lon) {
   setArea(label + 'の建物 ' + fmt(m.B.n) + ' 棟を読み込みました（' + Math.round((Date.now() - t0) / 1000) + '秒）。' + (got.cut ? '建物が多いため、' + fmt(MAX_BUILDINGS) + ' 棟までで止めています。' : '') + (got.failed ? '地図データ ' + got.failed + ' 枚を読めず、その範囲の建物は入っていません。' : ''), got.failed ? 'warn' : '');
   return m;
 }
+
+// ===== 判定器（Swin-B の特徴量 → ロジスティック回帰 → プラット較正） =====
+// 判定器の重み（Swin-B、int8）は jsDelivr から読み、ブラウザの保存領域に置いて2回目からはそれを使う
+const ORT_BASE = 'https://cdn.jsdelivr.net/npm/onnxruntime-web@1.29.0/dist/';
+const GEOTIFF_URL = 'https://cdn.jsdelivr.net/npm/geotiff@3.0.5/dist-browser/geotiff.js';
+const MODEL_CACHE = 'zenkai-model-v1';
+const CLS = {"aerial":{"mean":[0.2572759,0.4527917,0.03068475,-0.1161743,-0.05910756,0.3462323,-0.8722302,0.1670615,-0.09493271,-0.3652353,0.1694244,0.5978988,-0.2968729,0.07501258,-0.3081713,0.2579769,0.2664973,-0.06147862,0.2099336,0.206089,0.4805034,0.246197,0.6217682,0.6083316,-0.4599202,0.3986542,0.08607617,0.03079303,0.5733656,-0.2068717,0.3512393,-0.3855725,-0.3377882,0.6933625,0.3230727,0.3798978,0.7172898,-0.1409866,0.1088761,0.2788905,-0.4883558,0.3651688,0.2739699,-0.4357292,-0.3162493,0.01996494,0.1320648,0.3454827,-0.004665046,-0.2210418,-0.03714085,0.3711791,0.1200755,-0.3677381,-0.4538034,-0.5673639,-1.03914,-0.15996,-0.2902583,-0.5867892,0.6979783,0.1730849,-0.1683055,0.1547867,-0.2196698,-0.05140697,0.6609104,-0.3572047,-0.4592649,0.5256994,-0.2724784,-0.1843474,0.2567621,0.8408249,0.1846028,0.09192892,0.2870078,-0.1372947,0.4995064,-0.2524169,-0.5542193,-0.4738758,-0.6110876,-0.4375647,0.1164633,-0.6802667,0.4093064,0.3838786,-0.05948111,-0.260483,-0.3271701,0.5065577,0.002457313,-0.4426605,-0.2588547,-0.05469985,0.3217116,-0.146331,-0.1817107,-0.1263248,0.2482165,-0.112888,0.2687793,-0.4271503,-0.3736377,-0.3438657,0.4681638,0.3515399,0.3798515,-0.7253235,-0.1773407,0.05079184,-0.2057465,-0.1119443,0.07856593,0.1374191,-0.4562447,0.487147,0.2631537,0.2162276,0.2706897,-0.7842113,-0.2116817,0.1084783,-0.0901079,0.5294285,-0.147844,-0.4909385,-0.03844387,0.08580306,0.3489623,0.02432116,-1.112527,0.5705026,0.8753551,-0.473776,0.4055807,0.3474316,-0.477037,-0.0784996,0.629176,0.3057747,0.5071714,0.3748065,-0.2049691,-0.7028975,0.5247388,-0.2880968,-0.6097396,0.469465,-0.5278347,0.563929,-0.1930041,0.0493589,-0.412265,-0.102051,-0.4884799,0.6555608,-0.151058,0.7739877,-0.1832479,-0.08162828,0.6259885,-0.243858,0.4373082,0.08723009,0.4834404,0.1317914,-0.2509669,-0.1897629,0.678912,0.2194474,0.01855795,0.1283329,0.4671843,0.4989076,-0.7339543,-0.3956017,0.2017163,-0.1250608,-0.3425084,-0.485127,-0.2276866,0.4968392,-0.06512694,0.7087517,0.5675325,0.2733113,-0.2098199,-0.3374563,-0.6468659,-0.662826,0.2143883,0.08994601,0.4906472,-0.2767487,0.267386,-0.1946536,-0.07272696,-0.1923067,0.1377921,-0.4440352,-0.02656788,-0.2555431,-0.3452566,0.1323777,0.4793636,0.2665292,-0.6364561,0.04426783,-0.1114804,0.3585907,0.05281769,-0.369743,0.1878609,-0.8027115,0.9040031,0.1898223,-0.2856773,0.6986418,0.1496975,0.5810119,-0.02173416,-0.1392457,-0.5479927,0.3817645,0.5788717,0.2057786,0.06999287,0.7099664,-0.3746509,0.06390295,0.2094268,-0.1632011,0.4488439,0.3276354,-0.3291533,0.8824816,-0.2288071,-0.2124233,0.03142323,0.1863148,-0.786073,0.431652,-0.5302259,0.4695738,-0.2387156,0.3962777,-0.858189,0.2451221,0.1157636,0.608,-0.2003591,-0.003377029,-0.04655354,-0.3358354,0.05509019,-0.6345233,0.2397768,0.01588889,0.2955416,-0.5904178,0.0485591,-0.0517931,0.2334696,-0.4140026,0.1467032,-0.5614061,-0.6534911,-0.02688362,-0.2320358,0.1489049,-0.1462782,0.07399271,0.4393152,0.2621379,-0.3496768,-0.134377,0.06961162,0.3771808,0.1293585,0.5388115,0.5345442,-0.1165418,0.0843152,0.3317533,-0.171465,-0.03678288,0.710131,0.1066445,-0.5106259,0.2492692,0.3980152,0.3479325,-0.02433493,-0.1217146,0.2766404,-0.07080408,0.1816765,0.04543337,0.08896101,1.1596,-0.2384454,-0.4635287,-0.2782082,0.1580661,0.1687065,0.2047536,0.4577838,0.6966863,0.1738072,0.05039768,0.1129483,0.4652887,-0.7944256,-0.1671143,0.2562143,-0.3251712,-0.3020886,0.6148305,0.5239586,0.2464189,0.3907206,0.1880911,0.5713607,-0.5194708,0.01548923,0.4606305,-0.3564215,-0.08589599,0.2320214,-0.4987872,-0.8601458,0.4639408,0.636048,-0.2578924,-0.03724618,0.3698093,-0.9258285,0.2851426,0.2803464,0.1235291,-0.1161665,-0.1684912,-0.6521141,0.7375994,0.1568505,0.1968648,0.1768733,-0.5954566,1.023787,1.053612,0.08352369,-0.5740922,0.8657884,0.2862086,-0.108963,-0.4873081,-0.4329389,0.08903418,-0.3755801,-0.489869,0.3677682,0.3038645,0.1028839,-0.2017352,0.8002862,0.1327175,-0.617838,-0.01470903,0.6406779,-0.2763096,0.1471966,-0.2514065,-0.09396251,0.327703,0.577494,-0.3424376,0.1176599,-0.2903855,0.1386057,-0.5279911,0.02549141,-0.1101745,-0.2695927,-0.5719728,-0.7582405,-0.7248131,-0.4864478,0.07737151,-0.3570334,0.1100481,0.1820158,0.1250905,0.473849,-0.6750531,-0.6333767,0.8771355,-0.7006895,-0.1858456,-0.07778018,-0.2107588,0.22512,0.3376294,-0.4096759,0.1816897,-0.4319296,0.222599,-0.1656285,-0.06133656,-0.2326282,0.3494491,0.3595756,0.139365,0.1905039,0.2993497,0.5863922,0.0762394,-0.4312942,0.3775418,0.03578961,-0.1309082,0.1331573,-0.02237453,-1.037251,0.3320028,-0.05986004,-0.3334301,0.7974463,-0.02908301,0.2138931,-0.2039966,-0.4123241,0.08416904,0.6364676,0.05073259,-0.2258194,-0.5311299,-0.4831572,-1.546279,-0.2521312,0.1434307,-0.3767739,0.02596583,-0.1715579,0.3862932,-0.2884353,0.4032853,0.42459,1.098689,-0.2889456,-0.6502305,-0.2571089,0.05616834,-0.3046763,0.4431652,0.05755069,0.5760339,0.4046345,-0.5387057,0.3691142,0.07624848,-0.1917455,0.3729649,-0.2219714,-0.1339761,-0.3222529,0.6843956,-0.3514457,0.5810135,-0.1533467,0.4612039,-0.3282708,0.2034153,0.3717496,0.5387322,0.2488888,0.04252944,0.1401121,0.01164749,0.09562443,0.4040372,0.2379969,-0.3732285,-0.4739581,0.3137904,0.1694359,-0.1588234,0.2662745,0.1417926,1.158995,-0.5562869,0.1416143,0.1566379,-0.002861193,0.398509,-0.5536076,-0.2268073,-0.4434935,-0.1060123,0.4685434,-0.3363731,-0.1197923,0.2293424,-0.08579456,-0.01177443,-0.2901923,-0.2510512,-0.7318684,-0.3677174,0.3841335,-0.2150498,-0.4928455,-0.04144245,-0.7686752,0.4692476,-0.3080817,-0.4165635,0.4320864,-0.5759963,-0.1450402,-0.1629374,0.140514,0.4146184,0.01486263,-0.6913401,0.1232437,0.3993264,-0.1116137,0.1921206,-0.2264384,0.08800718,0.1728124,0.7375622,-0.228855,-0.2566983,-0.2058397,-0.01650234,0.2445391,0.158247,0.2095441,0.09385801,-0.6506019,0.1420894,-0.767829,0.1073227,-0.07979098,0.08912549,-0.06191636,0.1162233,0.1024242,0.6804748,0.1433889,-0.5953712,0.07703067,1.188594,0.3626093,0.1302855,0.1483803,0.4202701,0.206695,0.5154004,-0.6191336,-0.7649312,0.2908769,-0.01312649,0.1819584,0.2227993,0.2536866,0.1841956,-0.5390622,-0.1257511,0.2833669,0.0443574,-0.7371923,-1.213927,-0.7043675,0.1582868,0.4008453,-0.2718982,0.3360558,-0.5094892,0.1491862,-0.2583896,-0.1645413,0.5869272,-0.3266524,-0.2430826,-0.4622314,0.7660677,0.02224671,0.2182894,-0.1764791,-0.05961259,0.392924,-0.2992227,0.1177292,-0.1272898,-0.07632247,-0.5692793,0.3914716,0.09764008,-0.151437,-0.1948446,0.6588139,-0.04669156,-0.2730362,0.180867,-0.2607038,-0.9460324,0.5919975,-0.1777943,0.01927461,0.2549503,-0.1962434,0.1367098,-0.380062,-0.4332978,0.3669693,-0.7849664,0.1091843,-0.0310274,-0.2139918,0.01191454,0.1522235,-0.5421491,0.1915004,-0.1118237,0.1837131,-0.3126515,-0.6170311,0.3887009,-0.3427175,-0.4930597,0.4630607,-0.06038233,0.05531122,0.2998043,0.4939444,-0.3232834,-0.6960166,-0.552827,0.240377,0.03249386,-0.09489123,0.6880275,0.3449101,0.4341318,-0.2202595,0.2359138,-0.0417964,-0.1995624,-0.1667158,-0.3878114,-0.4599826,0.3129019,0.5759036,-0.5178014,0.1803565,-0.2835804,-0.2741765,0.4239123,0.3807951,0.5607985,0.07280522,-0.8905216,-0.6649453,-0.4517424,-0.8911791,0.2087312,-0.01729603,-0.2529193,0.04615521,1.062752,-0.4930036,0.496663,-0.1116829,0.1494356,-0.2135648,-0.2050866,-0.2289988,-0.1714587,-0.6408492,0.5684527,-0.3390877,0.1112943,-0.2301366,-0.09452828,0.6188548,-0.3491594,0.975026,-0.1692545,-0.2268982,0.3239421,0.7501405,0.01952929,0.8047118,-0.2707771,0.3077364,-0.5597023,0.3383964,-0.6786824,-0.4418918,-1.005679,0.3065493,-0.08199333,-0.1024027,-0.03750227,-0.2870162,0.3910883,0.3498642,0.5143157,-0.2298466,-0.09501136,0.09510828,-0.05355931,0.1505476,0.3119996,0.2319328,0.8581183,0.488804,0.4556319,-0.8142984,-0.5541396,-0.2134321,0.02807297,-0.2797787,-0.05500668,0.7735841,0.3025723,0.1699214,0.6677453,0.8198132,-0.106058,-0.439977,0.1156007,0.805919,0.1307635,0.2276045,-0.07824206,0.3075091,-0.3655953,0.05668003,-0.9771874,0.3985446,-0.2706894,-0.454403,0.1927724,-0.4715444,-0.5584969,0.5055244,-0.1107229,-0.4636013,0.3360476,0.116795,-0.1869037,-0.2916569,-0.3585448,0.4131631,-0.3460566,-0.1951072,0.4470275,-0.08305816,-0.0950365,0.07870019,0.05048005,-0.1004594,0.229494,0.08925834,0.1432726,0.5974085,0.3701163,0.3779441,-0.1948878,-0.3800106,0.2089924,0.1512942,-0.05083041,-0.8099703,-0.990943,0.2117103,0.7492561,-0.6307193,-0.1308676,0.1984115,0.7953886,-0.1530367,0.0607301,-0.01189021,-0.4341907,0.008442525,-0.0959052,-0.8129847,0.2354685,0.3922506,-0.929988,-0.09497151,0.1620359,0.234639,-0.005061411,0.3225609,0.5183871,-0.6590274,0.3643425,-0.3252397,0.5865084,0.1033899,0.5179643,0.02611731,-0.2630325,0.3264298,0.1030896,0.1549621,0.2614988,0.2823716,0.01171098,0.05792743,0.04331409,0.0736892,0.8820729,0.02553931,-0.4860138,-0.1749921,0.4913758,0.3976219,0.1570626,-0.2075183,0.08447242,-0.3768267,0.08261667,-0.8966631,0.1981614,-0.3890309,0.210446,0.7035789,-0.4883554,0.1135709,0.06624461,-0.1376467,0.4754209,0.7270103,-0.3197939,0.4176795,-0.2428217,-0.4389056,0.4462401,0.1491666,0.2777186,0.8468715,-0.03305027,0.2438487,-0.5559523,-0.01564303,0.06257554,-0.199814,0.1896539,0.06504021,-0.7407993,0.01786916,-0.05384753,0.1690916,-0.06568214,-0.3490493,-0.730108,0.02188501,0.2170027,-0.07255038,0.4393587,-0.05831695,-0.4490874,0.2782886,0.1183342,0.1172138,-0.2477289,-0.2738688,-0.4661959,0.2282987,-0.04107524,0.7065976,-0.5828318,-0.2045803,0.5332543,-0.3756103,-0.1058668,-0.3449489,0.3715719,-0.114224,-0.5633443,0.07774902,0.3274954,-0.2105426,0.3176254,-0.394149,1.176187,-0.2051779,-0.1478237,0.476481,-0.3565916,-0.4927298,-0.1486087,0.6792318,0.8438861,-0.162948,-1.059422,0.574498,-0.4859516,-0.5236658,-0.2642773,0.07226482,0.2531846,-0.568561,-0.4799812,-0.099671,-0.08870975,-0.1419265,-0.05789849,-0.1929536,0.4637258,0.6842215,-0.2170578,0.1275148,0.2804674,0.4002542,-0.6616476,-0.1432137,0.1694219,-0.1864129,-0.3076872,-0.1416357,-0.1371682,-0.236472,-0.175178,0.6025235,0.06719359,-0.4492901,-0.288171,-0.06116712,0.2481089,-0.6798028,-0.6139377,0.2833603,0.4546619,0.6409576,0.4046836,0.316688,0.1147821,0.279002,-0.7649576,-0.7620103,-0.5540956,0.2855654,-0.3701513,0.4682904,-0.05575645,-0.1701467,-0.2457478,-1.874292,-0.07461239,-0.6774084,0.2861147,0.295362,-0.1069629,-0.4806814,-0.06723121,-0.009249922,0.0330042,0.1372117,-0.1782778,0.5022929,0.6392832,-0.6102765,0.1240002,0.08416443,0.3299815,-0.1499561,0.08658439,-0.4432369,-0.1100209,0.1335281,-0.062136,-0.2005803,-0.2664611,0.2970244,-0.18718,0.07095337,0.1578395,-0.5575121,0.147059,-0.696417,-0.06460811,-0.3400921,-0.1410492,0.5716035,-1.070666,0.3391244,0.5475072,-0.2175418,-0.2864247,-0.3674288,0.06141437,-0.1546594,-0.2118225,0.1545306,-0.01511563,-0.1638775,-0.2434399,0.6608403,-0.01617059,0.06086983,0.4460307,0.4454917,0.07603619,-0.4066606,-0.05592763,0.04176808,-0.6466442,0.07117942,-0.232139,-0.04339562,-0.3027696,0.5388304,-0.3124275,0.3352011,-0.1325986],"scale":[0.5675571,0.6134099,0.01486834,0.4905702,0.5367522,0.5385809,0.6347483,0.5459141,0.5387781,0.6428263,0.523027,0.7341382,0.5263047,0.4915221,0.5947258,0.5344892,0.5189845,0.5275628,0.6330923,0.5032205,0.5196436,0.5947558,0.5181318,0.6111976,0.5341884,0.4618119,0.5101142,0.5199156,0.5534787,0.6328497,0.6050212,0.5191244,0.5992752,0.5305711,0.5230252,0.576555,0.5289649,0.6084107,0.4874616,0.5392286,0.5319731,0.6829444,0.5842229,0.5506085,0.4716426,0.5740628,0.5126943,0.5483888,0.4878553,0.5453843,0.464838,0.58271,0.5479946,0.6474591,0.6456514,0.5681588,0.6895266,0.5158748,0.5256604,0.5139466,0.5048929,0.578924,0.5303043,0.4777895,0.5368065,0.4321216,0.5523042,0.5319595,0.7423566,0.5017423,0.5166986,0.546944,0.6260367,0.5459484,0.5623712,0.5596409,0.7405124,0.5179789,0.5509542,0.5997606,0.6357171,0.4937802,0.5337497,0.6052131,0.6282651,0.4967813,0.5164583,0.4746031,0.5728734,0.5554653,0.5346261,0.4966161,0.5376127,0.4841223,0.5706933,0.7388478,0.6847256,0.5013813,0.4834014,0.5227504,0.5016799,0.6719084,0.4895541,0.5594494,0.5408374,0.5025965,0.5212635,0.4945091,0.5787578,0.5497491,0.5992611,0.5058184,0.5303571,0.4867468,0.4881849,0.4694121,0.4880881,0.5917807,0.589114,0.5073383,0.2166367,0.5443539,0.4885949,0.501098,0.5058468,0.5907366,0.525049,0.5880538,0.5738192,0.5965358,0.6561137,0.4607533,0.6023959,0.5769019,0.6857337,0.5916949,0.6612604,0.5598792,0.4942605,0.459443,0.4940139,0.4781974,0.5341391,0.5591074,0.442478,0.4331739,0.5489708,0.5289408,0.5599783,0.5819757,0.4757469,0.4959821,0.5713367,0.5014894,0.536623,0.5321293,0.5526468,0.5618686,0.5240707,0.526637,0.6784632,0.4672734,0.5194227,0.4726434,0.4743436,0.5758965,0.5698599,0.5401605,0.527799,0.5241448,0.4942131,0.4278919,0.6355661,0.4863546,0.5461387,0.4945495,0.491899,0.4622427,0.587026,0.6613943,0.6876908,0.5672904,0.6207463,0.5080813,0.5582882,0.5647609,0.6555801,0.5580741,0.6266232,0.4498361,0.6341155,0.5812661,0.5017776,0.4521969,0.5537573,0.5182829,0.5239448,0.5481666,0.5988279,0.5475603,0.5527867,0.554758,0.5435109,0.6472929,0.5394233,0.4042254,0.6293974,0.5298758,0.5712209,0.4862821,0.5598923,0.7145205,0.5438444,0.5252607,0.5081835,0.6139299,0.6698318,0.5917206,0.5765652,0.5630964,0.6147222,0.5638213,0.4418699,0.6542883,0.4964516,0.6140839,0.5934963,0.5043074,0.5682913,0.601815,0.5623423,0.5703009,0.5962606,0.5427488,0.6052347,0.5080174,0.5315041,0.5449339,0.5147798,0.5281223,0.5753906,0.5314902,0.5693067,0.5245535,0.5213794,0.5368094,0.4946907,0.5764675,0.6911412,0.5912782,0.5741166,0.6271917,0.586542,0.5827942,0.490355,0.603593,0.6827772,0.535409,0.6146976,0.4888023,0.5616383,0.5175848,0.5323827,0.5351431,0.5688083,0.5422064,0.5054784,0.6656191,0.5161649,0.5432155,0.6144028,0.5610397,0.4978152,0.5796577,0.52745,0.5496908,0.5346339,0.4225366,0.6037469,0.5512208,0.7595185,0.6533686,0.70908,0.6725429,0.5004968,0.5719494,0.5782972,0.4647689,0.6463971,0.5480863,0.5830573,0.5548565,0.5279638,0.4872878,0.4879616,0.4823018,0.601519,0.5340957,0.5219043,0.5163302,0.5263233,0.5823431,0.5306234,0.565459,0.5364442,0.5286787,0.5320248,0.4810846,0.4621618,0.5264897,0.5625349,0.549814,0.6274884,0.5141025,0.6493422,0.5456128,0.5469058,0.4724565,0.5349649,0.6135276,0.5418424,0.540973,0.6526239,0.5548004,0.628388,0.5346564,0.577904,0.5765246,0.5990816,0.5981068,0.533223,0.5363143,0.6267788,0.4947014,0.5135631,0.5747498,0.605102,0.5361836,0.6653432,0.5228109,0.5350629,0.5452315,0.6172034,0.7494026,0.6353825,0.5207622,0.6043903,0.4864859,0.5785948,0.5200906,0.624703,0.5570853,0.545933,0.6371434,0.5347273,0.59391,0.5297735,0.5982109,0.4714877,0.5598908,0.609404,0.5309274,0.5343238,0.5522206,0.500922,0.5219424,0.5416332,0.6156242,0.5552204,0.5241483,0.5395559,0.5478763,0.5826372,0.4821286,0.5621638,0.6036289,0.6809213,0.559701,0.4967865,0.5735322,0.4936515,0.7348796,0.7496419,0.4935491,0.5103011,0.5380623,0.515677,0.5231662,0.572786,0.5414741,0.5299877,0.544417,0.4542779,0.4896999,0.5402913,0.6116914,0.5864596,0.5770062,0.5807779,0.4909201,0.5096982,0.4878233,0.5435943,0.6359442,0.5923352,0.4810856,0.5441116,0.5549196,0.5048416,0.4893604,0.50072,0.5868428,0.5640243,0.4565529,0.5139462,0.5866967,0.4793481,0.583573,0.5516393,0.5166684,0.725674,0.5195574,0.4726165,0.4833932,0.5420055,0.5312637,0.5518884,0.4819288,0.5026095,0.5837976,0.5268758,0.6061389,0.4979027,0.5363767,0.4553562,0.5565425,0.5843106,0.5619581,0.5702631,0.5599298,0.6267054,0.5133481,0.5101646,0.4974613,0.5689536,0.571956,0.6660361,0.4559101,0.5936833,0.5920811,0.4261384,0.6912068,0.5750219,0.5266162,0.5486671,0.6244164,0.5114557,0.5621147,0.5413825,0.5641112,0.5808379,0.5800569,0.5887375,0.5432062,0.4953077,0.6488174,0.5259327,0.5764159,0.53095,0.5423704,0.5328798,0.4840983,0.6358745,0.6223356,0.4196392,0.5238033,0.5895821,0.4580753,0.5985877,0.5302036,0.5464087,0.5185367,0.5738037,0.6000265,0.5878744,0.5202839,0.5690774,0.5022127,0.6561092,0.4966193,0.5900523,0.654501,0.6066003,0.4963272,0.5205416,0.5420884,0.4701785,0.5429716,0.5550081,0.5358811,0.5869753,0.5133116,0.4829438,0.5021967,0.4749116,0.4989996,0.5240408,0.515961,0.4955918,0.478439,0.5496356,0.5708814,0.5117704,0.4580499,0.4910343,0.5371216,0.4715291,0.4447803,0.5052714,0.5773984,0.6553384,0.6483499,0.4876723,0.5464196,0.5686479,0.5984594,0.5044461,0.4857175,0.5501404,0.6322583,0.4934655,0.5074946,0.5727436,0.5514005,0.5290846,0.6923786,0.4744151,0.5395661,0.5782114,0.5258261,0.5438469,0.5104507,0.5591212,0.5681543,0.5226344,0.5228794,0.5807842,0.5698382,0.5291809,0.498402,0.6155963,0.4515135,0.5636578,0.4757677,0.4941915,0.5267903,0.5123772,0.5092269,0.5094797,0.6199686,0.5663585,0.5230424,0.4999925,0.6215365,0.4769299,0.5092294,0.4924613,0.5310233,0.1327052,0.505667,0.6933023,0.5423778,0.5933992,0.571938,0.5455691,0.7165463,0.5931713,0.5881877,0.5252344,0.6358825,0.6132599,0.5192077,0.5401751,0.5292589,0.5166942,0.6881422,0.4962621,0.4991938,0.5763705,0.5174233,0.6277459,0.5161713,0.5556635,0.559748,0.5255785,0.5563353,0.5244293,0.5514827,0.5653502,0.735079,0.5425015,0.4012403,0.5138099,0.5407261,0.4921129,0.5288478,0.5531898,0.5125681,0.7086476,0.5639018,0.5094743,0.5304535,0.5382633,0.5164123,0.6426162,0.646453,0.5899071,0.5599041,0.6004687,0.6007126,0.5934927,0.5200428,0.551478,0.5217349,0.5627876,0.54,0.5557053,0.5824043,0.8423143,0.6321439,0.5446446,0.5263153,0.5049303,0.5496865,0.5197221,0.6032349,0.4472591,0.6159158,0.5640412,0.573175,0.6187351,0.5441182,0.584854,0.493691,0.5642506,0.5269967,0.6697994,0.5415058,0.5013512,0.5254569,0.5602294,0.5265983,0.6712971,0.5598082,0.5048399,0.5085485,0.5234739,0.4661988,0.4909411,0.5535717,0.5832251,0.5683325,0.5004821,0.5353647,0.5624288,0.5383568,0.5739891,0.4648252,0.716752,0.5209152,0.5095878,0.5185658,0.6455553,0.5281115,0.5750734,0.5661225,0.05598643,0.5266068,0.5460651,0.5347544,0.6276439,0.3958653,0.5531766,0.6573731,0.5053035,0.5306092,0.6208674,0.575403,0.6014205,0.6149073,0.5535147,0.5316376,0.5305182,0.5127779,0.6047078,0.4969703,0.5323236,0.5557619,0.5904498,0.4969145,0.5009637,0.6229934,0.5518044,0.4164535,0.5843895,0.5326423,0.4857819,0.4994207,0.5301639,0.4432318,0.6065763,0.5591235,0.5650255,0.5068287,0.5473568,0.5537052,0.5677131,0.5600925,0.6526269,0.4866244,0.6069784,0.5445738,0.4986438,0.4454782,0.5990039,0.5236945,0.4588156,0.5315177,0.5659061,0.5231594,0.6483619,0.6411569,0.6692829,0.5049043,0.5029269,0.5595068,0.5693307,0.6537449,0.5688066,0.5212395,0.5756214,0.5111771,0.5529056,0.5337469,0.5396748,0.520016,0.5384829,0.4863684,0.5005972,0.5348719,0.5053009,0.4883017,0.4613844,0.5778259,0.6022371,0.4815412,0.497548,0.6171342,0.4972743,0.5481634,0.5429554,0.537516,0.4973155,0.5320119,0.5363932,0.5537236,0.6087206,0.5320133,0.5735296,0.5721856,0.5236867,0.5184532,0.5485542,0.5422378,0.555029,0.5822223,0.5113019,0.5928987,0.6509449,0.5365627,0.5502492,0.5389809,0.5990948,0.5232333,0.5120651,0.6430474,0.5209187,0.533252,0.5459401,0.5545935,0.5097944,0.4789738,0.5858627,0.6078638,0.578034,0.4848478,0.6102364,0.502939,0.5126328,0.624868,0.5000941,0.5764763,0.5574577,0.5753386,0.4937179,0.6253026,0.4734908,0.5335772,0.5394582,0.5333038,0.516253,0.5326927,0.5022226,0.5421307,0.6049688,0.5877656,0.5919627,0.4549571,0.5324134,0.6411538,0.4988908,0.5220138,0.4903213,0.5630575,0.5285184,0.5334168,0.6947795,0.7377387,0.5521254,0.5797045,0.6857959,0.560136,0.5635621,0.5981531,0.4864335,0.5430806,0.5041369,0.5052845,0.585113,0.5975058,0.6595711,0.55516,0.5848397,0.6868116,0.5691809,0.5952695,0.5103282,0.5214608,0.5231116,0.5253386,0.5786926,0.5121563,0.4926983,0.5012676,0.4918417,0.5804161,0.526074,0.5578714,0.5098832,0.5708677,0.4860509,0.6340231,0.5663925,0.511437,0.532469,0.5632766,0.6140688,0.5843389,0.5796234,0.5131752,0.5367272,0.5620495,0.4759457,0.5700792,0.5605744,0.5833821,0.5297686,0.6828222,0.5308436,0.5358311,0.4814032,0.5406471,0.5493032,0.5339487,0.497877,0.4902068,0.5517459,0.5310919,0.5593483,0.5028265,0.4789623,0.4539952,0.5110652,0.525635,0.5140853,0.5293179,0.6796412,0.5349286,0.5402055,0.5365475,0.5539438,0.6413422,0.5380922,0.654495,0.5325981,0.4526,0.5359374,0.5238113,0.4930805,0.4416055,0.5299981,0.4818445,0.5425963,0.5341038,0.4716912,0.5269045,0.5258077,0.5422708,0.5179791,0.4834057,0.5839157,0.5214408,0.5641943,0.7209409,0.6509691,0.4586231,0.5547821,0.5076694,0.54925,0.5270276,0.5529906,0.4898236,0.6203311,0.5114351,0.4593266,0.4956612,0.5034824,0.5420317,0.6193534,0.6367357,0.6274347,0.5126414,0.5777188,0.5718804,0.566324,0.6964998,0.5299786,0.6921232,0.5118754,0.6103587,0.5015233,0.7153603,0.6115584,0.4796011,0.5428916,0.4674283,0.8679863,0.5138439,0.5429019,0.5128136,0.4754234,0.6087354,0.6172954,0.6226297,0.4894242,0.4278417,0.5122262,0.5185231,0.6109981,0.5133024,0.5684985,0.5888866,0.5236104,0.5972332,0.5956003,0.4924487,0.4834792,0.4736925,0.4845408,0.5842456,0.6171387,0.4833794,0.6082097,0.5401564,0.5998591,0.5414511,0.5605487,0.530913,0.4914144,0.6291896,0.5769917,0.4797581,0.5679153,0.600573,0.5355089,0.5354753,0.4762932,0.491813,0.4748003,0.5066936,0.560521,0.5401136,0.5488686,0.5092945,0.4624154,0.5292391,0.6973944,0.6286045,0.4952401,0.5940687,0.554742,0.5151198,0.5563195,0.4629868,0.4229261,0.5571504,0.512029,0.5210296,0.6060738,0.5357802,0.5459799,0.5507909,0.5382154,0.6188047],"coef":[0.001489065,-0.04217236,-0.01995742,0.004751243,-0.007802067,0.00841538,-0.004663937,0.03295185,0.01132884,-0.00285945,-0.01333122,0.01426026,0.01578244,0.002283779,0.0120447,0.04665707,0.005137168,-0.008892423,-0.04730992,-0.003039825,-0.01904688,-0.01171029,0.002100072,0.02999672,0.003354742,0.002480256,0.01304223,-0.03755128,0.01823701,-0.01497622,0.0126703,-0.02282586,-0.01665187,0.02138373,0.03157116,-0.00940557,-0.01761021,-0.01277797,-0.008765687,-0.02088157,-0.002216808,0.002694546,-0.02033479,0.004365023,-0.01059424,-0.005329681,0.005145089,-0.01661939,0.03881831,-0.04081628,0.004531281,0.01045827,0.03133369,-0.0152096,-0.02818051,-0.06300016,-0.01709616,0.02812811,-0.002554278,0.03620702,0.004325587,-0.0343029,0.03239419,-0.02212019,0.005204642,-0.01624942,-0.00845364,0.02399364,0.02555827,-0.06149844,-0.01518088,0.004886197,0.01614522,0.02068767,-0.006011678,0.02079828,0.0303218,-0.02972826,0.001610051,0.01003397,-0.05955025,0.01300635,0.03341748,-0.01065974,0.007452724,-0.01472323,0.02525765,-0.02238722,0.02820231,0.01304849,-0.02580908,0.02270456,0.007699111,0.04929394,-0.02628826,0.01549944,-0.0210651,-0.00519944,-0.01155209,0.0165482,-0.02233454,-0.009057269,-0.00595417,-0.01288336,-0.04586389,-0.005548943,-0.01116796,-0.008858503,0.01833873,-0.03480799,-0.03953663,0.01416551,0.03490872,-0.01334086,-0.005525329,0.002633229,-0.01091806,-0.02618216,0.02558736,-0.04857957,0.01955186,0.02615068,0.02274317,-0.01777101,-0.04151119,-0.03843191,0.001703436,0.01378625,0.0009153498,-0.01769547,0.01825417,-0.05021528,0.009383705,-0.01423879,-0.009398128,-0.02623865,0.0338721,-0.01369641,-0.02948751,-0.01894193,-0.03457807,-0.01832981,-0.0005103817,0.008764523,-0.01265069,-0.01200574,-0.002835511,0.0278875,0.01921778,0.009082485,-0.002196244,-0.01351006,0.004510578,0.005478993,0.01910865,0.03488973,-0.006609603,-0.02381267,-0.05300495,0.006560956,-0.01937718,0.01879208,-0.01145832,-0.004145088,0.04778147,0.01302278,-0.01738495,-0.00281582,-0.00236855,0.01300581,0.03219435,0.0214775,-0.0007434745,-0.02196415,-0.00728581,-0.0464985,0.003711817,-0.0169432,0.02147496,-0.009223746,-0.02934204,-0.02474504,0.00193006,-0.006047298,-0.01348228,-0.007531017,0.02431004,-0.01482439,-0.01083062,-0.01836666,-0.01200899,-0.02066446,-0.007783529,-0.01532169,0.03408653,-0.06534727,-0.006913131,-0.00312074,0.000150625,0.02783016,-0.03043724,0.01377475,-0.01095978,-0.0009069313,0.0172108,-0.03653137,0.01240736,0.006182782,0.03147258,-0.02850751,0.01494617,0.005078116,-0.01647462,0.02352066,0.0003512757,0.006108114,-0.01140503,-0.01489943,-0.01644211,-0.01262904,0.02056985,0.003199384,-0.01462817,-0.02168134,-0.007833406,0.005123786,-0.01048403,0.01352693,0.02150921,0.02872105,-0.01083845,-0.007569817,0.01965985,-0.01377877,0.006589102,-0.005033746,0.003047799,0.01934938,-0.002935215,0.001382185,0.004906163,0.01835172,0.006395194,-0.008914302,0.01165796,-0.01032344,0.009049371,0.003611256,0.0189549,0.04726494,0.04922945,0.02147157,0.01720827,-0.01687092,-0.004412131,-0.03307759,-0.02067443,0.02195727,-0.005775258,-0.03660503,-0.01353437,-0.004429215,0.008217892,-0.006017931,0.006628555,0.01928229,0.05111201,-0.004059963,-0.01699641,0.006636791,-0.002954202,0.0274605,0.03107246,0.02066607,-0.01091337,0.02115944,0.01516239,-0.02631195,-0.01917347,0.004248139,0.0001725726,0.003999726,0.006889723,-0.03124273,-0.04301882,-0.02451061,-0.01016587,-0.02635397,0.01098462,0.0142086,0.03758233,0.03620033,-0.01101038,-0.0320734,-0.0158415,0.01372856,0.01022871,0.004267574,-0.001066756,0.005664057,-0.002773976,0.01946387,-0.02451301,0.004123804,-0.01412945,0.01629581,0.0415814,-0.03241178,-0.02891904,-0.01593773,-0.03661068,0.01675636,-0.01468319,0.006131131,0.01246692,-0.03973727,0.0147296,-0.003588593,0.01180573,-0.02138934,0.01187845,0.009052525,0.02104908,-0.007235269,0.03120886,0.006017271,0.02594792,-0.04026052,0.003798217,0.000943558,0.02558673,0.004940514,0.03561334,-0.04248459,-0.01262788,-0.04412321,-0.01314255,0.005498299,-0.001234559,-0.02178895,0.01101669,0.004696806,-0.02739928,-1.097103e-05,0.008359391,-0.01699647,-0.02306346,-0.02051662,0.002240399,0.01456687,-0.0001062567,-0.03390423,-0.02606178,-0.03741386,-0.01164462,0.01343509,0.01835185,0.0377119,0.009139226,0.01838866,0.01849815,0.009167564,0.01053761,0.001277485,0.04494427,0.02718483,-0.01661838,-0.04856008,0.001284714,-0.03746211,-0.01676836,-0.02303544,-0.02072428,0.01594394,-0.02542542,0.005456633,-0.01423207,-0.007226448,0.03767948,-0.01467627,0.004851266,-0.001156829,-0.01159717,0.004025792,0.02083689,-0.02486424,0.01375038,0.01627415,-0.001698457,-0.0508742,-0.004097546,0.006114959,-0.01264568,0.003109445,0.02013886,0.002076075,0.02830067,-0.03306382,0.001892225,-0.03146174,0.03781183,-0.0006719909,-0.0302354,-0.0002611747,-0.03204243,0.02096023,-0.0008093367,-0.02669339,0.04007271,0.06678956,0.02332489,-0.0122931,0.02200093,-0.01667022,-0.006941053,-0.02957823,-0.004761448,0.0326554,0.007419787,0.00753993,0.01627053,0.01444341,0.009644236,0.0132719,0.00636346,-0.02595295,-0.02502533,0.01321934,-0.02088538,-0.01924099,-0.05976017,-0.00829665,0.009320551,-0.03947917,-0.01957148,-0.01734262,-0.008311455,0.02284703,0.0002427974,0.02133484,0.001398103,-0.003458746,0.007330723,0.01379522,-4.427274e-05,0.01765589,0.004185974,0.007592789,0.03872733,-0.01303071,0.003530842,-0.02165658,-0.003831964,-0.02811195,-0.01628184,0.004091902,0.0281271,0.03322372,-0.0009494018,0.01117333,0.0269331,-0.01926108,-0.01296078,0.009633563,-0.001485074,-0.02134091,-0.01388307,0.01070039,-0.02580814,-0.01515391,0.03966117,0.005000208,0.01703868,-0.01556592,0.002011817,-0.01059924,0.02485054,-0.01017657,-0.02421865,-0.02264483,0.001698851,0.0272906,0.00372812,-0.01088294,0.01062919,0.03218595,0.002045442,-0.004885302,0.03952937,0.002954147,0.01331337,0.02653674,-0.009148237,0.007742351,-0.006002912,-0.0214616,0.02602261,-0.01374192,-0.05376784,0.01371846,0.02534401,0.005270057,0.01436853,0.006804712,-0.002041644,0.01700426,0.02400906,-0.05032253,0.03981614,0.005089149,-0.02247141,-0.003462578,0.02619537,0.000160387,-0.0206798,0.02913973,0.003068019,0.0172765,-0.002452257,0.00606423,0.001094466,0.03216351,-0.03308065,-0.001748999,-0.004216099,0.01396452,0.0437395,0.02257724,-0.028703,-0.0340049,-0.02400143,0.006966122,-0.02923965,-0.03339104,-0.01494968,-0.005376703,0.00310918,-0.03197187,0.01273888,0.033793,0.01033551,0.01245618,-0.0009514453,0.01670281,-0.01589045,-0.01556875,0.002486121,-0.005893876,-0.05418435,0.03069842,-0.02362192,-0.00190409,0.004519423,0.003691338,-0.0007131061,0.003230925,-0.0120275,0.01013885,-0.02326075,-0.03110453,-0.00321007,0.005581592,0.02301389,0.0212094,0.02994332,-0.01659552,0.01449908,-0.008154091,-0.004410928,0.02388126,-0.003567746,0.03772531,0.004072272,-0.004781683,0.00689189,0.02459732,-0.02191184,0.01580997,0.02602756,-0.01114474,-0.001348878,0.0345311,-0.02353678,-0.01021779,-0.009413364,-0.0103738,0.02440188,0.01425541,0.01851389,0.005453148,-0.00877643,0.02113247,-0.00897501,0.01980122,0.01618742,0.002513927,0.01080708,0.03337488,-0.00608993,-0.008035023,0.0195291,0.007695357,-0.04307287,0.008864741,0.04375196,-0.002557036,0.01493564,-0.02190604,-0.00619373,-0.04743834,-0.007262078,0.02164467,0.01665963,-0.009419494,0.006997171,0.01289039,0.02064872,0.02120033,-0.01494816,-0.002550281,-0.01687441,-0.01453949,0.02468935,0.01521576,-0.002454825,-0.008799495,-0.01648904,-0.00489499,0.01248079,0.002782342,0.02135036,0.0002025837,-0.03028829,-0.005497937,0.05955913,0.03750773,-0.02385428,0.0439979,-0.0206951,-0.01930156,0.01107169,0.002812762,-0.03149404,0.02178715,0.01315931,-0.01941171,0.01122563,-0.01433951,0.006876782,-0.002948521,-0.01461612,-0.004272187,0.005330992,0.01072391,0.01962063,0.01083992,0.03002374,-0.04497061,0.01622469,-0.01598332,-0.0007960679,0.007375054,-0.02576877,0.01443436,-0.007738509,0.007524957,0.02469713,-0.01811226,-0.004088708,0.02835043,0.06288161,-0.01651329,0.0004608972,0.01520962,-0.0298713,0.0007473287,0.006640865,-0.01355099,-0.005920909,0.02216609,-0.01277688,0.04136527,0.001123686,-0.01041296,-0.002506494,0.01255264,-0.040178,0.03219555,-0.004511072,0.001587721,0.009362345,0.02467521,-0.003094482,-0.01521765,0.02826149,-0.04143844,0.03646577,-0.007861487,-0.01136746,-0.01787263,-0.02953389,-0.01260854,0.003728049,0.00521305,0.01978599,-0.0323797,-0.01706409,0.004730855,-0.02195235,0.005861338,0.007158838,-0.006368803,-0.02330967,-0.03098897,0.0111527,0.005058218,-0.01321047,0.03574206,0.01554898,0.007383516,-0.05269393,0.01246953,0.003673173,-0.03896066,0.02976077,0.02429529,0.0111874,0.01171019,-0.02158093,-0.02597785,0.009008113,0.002398557,-0.008464743,0.007325874,0.04523494,-0.01440048,-0.003915637,-0.005011127,-0.01245613,-0.03315566,0.02065864,0.02832828,0.01188902,-0.01315034,-0.01215374,-0.01775924,0.02716867,-0.04080941,-0.04660409,-0.001681095,-0.00263536,2.236006e-05,-0.03198749,0.02676643,-0.01463108,-0.02330493,-0.01649433,0.01226715,-0.001235435,0.02344215,-0.01081309,-0.008237068,-0.006298886,0.02887007,-0.005546916,0.01129184,-0.0107859,0.01950243,0.02304899,0.01912162,0.02281113,0.01528379,0.01510764,0.05640155,0.03038956,0.008554002,0.02453554,0.03891339,-0.004099321,-0.02541143,0.009981669,0.02779454,0.02845563,0.02640862,0.004710916,0.02084848,0.008876069,-0.001486456,-0.003728841,0.007906191,-0.01718711,-0.01316608,-0.01687009,0.04370292,-0.01729115,-0.03940811,0.007066845,-0.02725318,-0.02009529,0.008734102,0.02406343,0.01382927,-0.03920938,-0.003634629,0.01758833,0.01412278,0.03667367,-0.01002007,0.02312836,-0.02271176,-0.009255896,-0.01947793,-0.02783706,-0.03091531,0.02383391,0.03643724,-0.004295495,-0.04454417,-0.01976338,0.003802881,0.008652638,-0.04104158,0.02115813,-0.0007013852,-0.03377333,0.004644791,0.01842053,-0.006395317,0.009586827,0.01092988,0.03271673,0.001121809,0.02142013,-0.02069073,-0.01189122,0.01005819,0.0004123285,-0.03916459,-0.0214091,-0.03697831,-0.02244589,0.01758853,-0.007572504,0.002958243,-0.01638507,0.02425008,0.02512868,-0.01612072,0.009560654,0.03560014,-0.01571547,-0.009574862,-0.02132591,-0.004809805,0.01697045,0.001516237,0.004609656,0.002300253,0.003919644,-0.007168337,-0.006409468,0.008857511,0.01621775,-0.02623991,-0.02517587,-0.03728861,-0.008345283,-0.03553422,-0.02220996,0.05907895,0.02994381,-0.009467359,0.02757502,0.01484677,-0.008665579,-0.02534608,0.01642196,-0.001689184,0.03256093,0.00487065,0.01950609,-0.008999653,0.004461215,-0.003283635,-0.04696899,0.03488264,-0.01409437,0.002384307,-0.002153603,0.007312356,0.04564511,0.03087518,-0.01228464,-0.01781014,0.01644134,-0.007452533,0.01974583,-0.01102151,-0.006857084,0.03918238,0.01360732,-0.009166802,-0.02550985,-0.01217928,-0.002014699,0.006135956,0.001533581,0.01145653,0.0406961,-0.04057053,-0.01970874,0.00490514,-0.002543692,0.02833605,-0.002125607,-0.004502511,-0.0246362,0.002297683,0.004806639,0.01416148,0.01455371,-0.005309252,0.0191385,0.02002198,0.02008287,0.03095633,0.02597998,-0.004542833,0.001321102,0.02314493,-0.01527626,0.01188398,-0.03379319,0.01878943,0.003911779,-0.002734862,0.01369684,-0.007636441,0.0058758,0.02339299,0.0194596,-0.06773159,0.02339072,-0.003323705,-0.02728188,-0.007770644,0.03935131,0.006887789,0.01519678,-0.01691067,0.0001502863,0.007690068,0.06135014,0.03595048,-0.02674606,0.01240379,-0.006906115,0.0110754,0.01628696,0.03885404,0.01162721,-0.007523973,0.01724643,-0.03549802,0.01496429,0.01466294,0.02934121,-0.006541576,-0.005850336,-0.01164103,0.02671995,-0.008204526,0.0218558,-0.02987442,0.008731941,0.02493667,-0.0131034,0.0416453,0.005107739,-0.02674523,0.01804522,-0.01571681,-2.538307e-05,-0.0003143754,-0.03313691,0.01202173,-0.0125564,-0.006043668,-0.01054487,-0.02656958,0.007264291,0.009823478,-0.005941324,-0.02576475,0.002741731,-0.02266322,0.00709068,-0.06910038,-0.02181398,0.001917831,-0.0476553,0.02143951,0.003997769,-0.01455902,0.01643481,0.01964404,0.0005053513,-0.006746641,0.004488346,0.01928954,-0.0182429,-0.01089366,0.02713325,-0.001875236,0.0002615106,-0.04357376,0.004734159,0.01236571,-0.01112371,-0.02171867,-0.001322341,0.005858893,-0.03579375,-0.01051901],"b":-0.8549277126524343,"cal":{"a":1.0036374141823263,"b":-1.7458747834300261},"info":{"棟数":4812,"D5以上":574,"地区":150,"C":0.001,"交差検証AUC":0.809,"交差検証AP":0.454,"確率の合計":573.9,"学習":"能登2024 悉皆調査の建物、国土地理院の正射画像（2024年1月、ズーム18）の切り出し"}},"ground":{"mean":[0.9980872,0.2316576,0.007622283,-0.1693875,-0.125116,0.5410931,-0.3943717,0.4820507,0.01008397,-0.7620167,0.4862983,0.6201527,-0.2384632,0.2829183,-0.2096968,0.06589188,-0.01029344,-0.3227236,-0.721072,0.2227863,-0.5693319,0.1844329,0.7942187,-0.9349969,-0.3812363,-0.2255721,-0.3169059,0.3179994,0.2209233,0.05438282,-0.1728246,-0.2467294,-0.08725189,0.06383554,-0.05844832,0.4813116,0.5116939,-0.6666673,-0.1776989,0.1085969,-0.5235641,0.8370545,-0.2212442,0.1849048,0.2827852,0.2102223,0.0552668,0.3792914,0.1259308,0.2990747,0.05394299,0.09699811,-0.2467783,-0.1836427,-0.06238401,0.272894,-0.1619786,-0.207953,0.3287331,-0.2247312,0.2941068,0.2577955,-0.4323543,0.4247291,0.3797803,0.4436665,0.01866218,-0.1910979,0.05677291,0.581634,-0.3414086,-0.2206554,-0.01373445,-0.1778408,-0.0612667,0.4700516,-1.319822,0.3245196,0.3349725,-0.02425677,0.2337704,0.06599823,0.239602,-0.2324716,0.09451035,-0.01754825,0.7208565,-0.1924085,0.5646065,-0.0238671,-0.5511674,-0.5779601,0.1179241,0.04967485,-0.1888631,0.1435394,0.9100695,0.1318009,-0.2065364,0.5354544,-0.3404751,0.7470687,0.1367859,0.2493461,-0.3186482,0.101146,0.1862588,0.3023205,0.4599621,-0.5805697,-0.2660219,-0.4183016,0.0471121,0.08589966,0.8154411,0.2701788,0.7682532,0.1853922,-0.1338327,0.05250751,0.04385271,-0.09015572,-0.04834115,0.7873631,-0.4074196,0.7183443,0.6683445,0.1989316,-0.2334386,-0.1345815,0.3055502,0.1592694,-0.2269692,-0.4879,0.2685974,-0.2149962,-0.1024674,-0.455549,-0.01139374,0.03861172,0.3987063,-0.7352459,0.2513209,-0.5193348,-0.3275746,-0.09309331,0.1225963,-0.07155871,0.7519659,-0.2842448,0.2614444,0.58413,-0.09247446,-0.1283905,0.2197972,0.4831167,-0.4942515,0.06203191,-0.1103481,0.4430947,0.1490915,-0.7393469,-0.5619394,0.60906,-0.169936,0.2357109,-0.6267784,-0.494622,-0.06383749,0.5905225,-0.3217015,0.1722554,0.2048856,0.538579,0.2448483,0.1836351,-0.8488305,-0.3583833,-0.06536275,0.04266934,-0.07233536,0.2604615,-0.09955603,0.09912164,-0.4695326,0.1203485,0.1520243,-0.398728,-0.2373753,0.1992088,0.3349341,0.04958203,0.3602852,-0.8964673,-0.1080326,-0.2137971,-0.5329071,-0.6226896,0.2579605,0.0445376,-0.4914239,0.04673268,-0.4857621,-0.1866207,0.001662214,0.3404584,0.08689254,-0.2105316,0.1256183,-0.1424446,-0.2642597,0.08931302,-0.01416651,0.1020964,-0.2024648,0.6641082,0.03307433,1.113741,-0.5446319,0.7126984,0.6090242,0.4048186,-0.09703142,-0.0368948,-0.8849031,0.2171524,0.1371318,0.7673235,0.4032872,0.9637175,-0.133173,-0.1339884,0.04500185,-0.5960449,-0.03557144,0.3347702,-0.3801043,0.4964934,0.5085266,0.002148716,-0.8043461,0.4591136,-0.04532132,-0.2416998,-0.3472875,0.2689462,0.233932,-0.06991507,-0.5070717,-0.2903693,0.4913803,-0.1966591,-0.05181501,-0.6378308,-0.1115867,-0.2829263,-0.5122317,-0.1881791,-0.2345862,-0.2453345,0.5947505,-0.349027,0.1673037,-0.12614,-0.404319,-0.009195083,0.4021454,0.09110397,-0.4288653,-0.02291837,0.2501816,-0.8558221,0.6499136,-0.4608482,-0.05517183,-0.5327233,-0.2010703,-0.1372657,-0.1827618,0.1957735,-1.131703,0.3846121,-0.7584359,-0.6885661,0.2802535,-0.6773831,-0.6647303,0.2142911,-0.3203853,-0.1449352,0.5998598,0.4771491,-0.2382844,0.2373559,0.03134859,-0.0003959766,-0.0164544,0.5014263,0.1892193,-0.1044096,0.2002638,-0.4945722,-0.8123042,0.1655831,-0.149438,-0.2785017,-0.1987518,-0.3788342,0.1408687,-0.8027706,-0.004315167,0.1799531,0.3729004,1.060374,-0.1378695,-0.1710739,0.1960605,-0.5835551,0.2592771,0.4621065,-0.2416849,-0.5636904,-0.01564973,-0.5448787,0.008302093,0.07470109,0.002925556,-0.1066301,-0.06911812,0.356504,-0.1367407,-0.08490747,-0.5432546,0.6860219,0.01624513,-0.1550012,-0.4162315,0.6511027,-0.5945185,-0.1193923,1.46114,-0.351973,-0.7111599,-0.01177922,-0.4224975,0.4290077,-0.575147,0.2638102,-0.5387034,-0.3987398,0.5718512,0.5191857,-0.7799537,-0.05663683,0.2531016,0.5142141,-0.4686694,0.1926125,0.0361584,0.1705524,-0.7269351,0.2564926,-0.0635161,0.6713672,0.5251908,0.2161347,0.4619731,0.09867272,-0.7053583,-0.2000177,0.0007680552,-0.08023344,-0.3044324,-0.026016,-0.5930834,-0.3435848,-9.955284e-05,0.2630092,-0.6613674,-0.5146102,-0.06635535,-0.4873392,0.4247915,-0.005348456,1.126875,-0.4371369,0.6400508,-0.3783647,0.7186644,0.6328575,0.00609136,0.5240742,-0.2935247,-0.09168297,0.3152074,-0.8588175,-0.1134702,0.7333642,0.6806395,-0.7250833,-0.03743571,-0.3423077,0.07126466,0.1737589,-0.4925582,0.3633381,0.3196464,0.246098,0.07283334,-0.7598064,-0.5242018,0.02728011,-0.3970041,0.005601565,-0.1875988,-0.4530451,-0.161575,0.5013368,0.4413555,0.04101283,-0.4125135,-0.2911911,0.4539243,-0.6758893,-0.2601929,0.1255958,0.1259295,-0.1507272,-0.1104408,-0.1877045,0.1801615,0.167664,-0.05117621,0.1502863,0.1224985,-0.1619555,-0.2805977,-0.5086959,0.04783892,-0.3139524,0.2176787,-0.2585136,0.1178059,-0.2827801,0.1440453,-0.04328664,-0.383106,0.03546335,0.03423764,-0.1614874,0.05387295,-0.5362157,0.7484226,-0.2545327,-0.4810423,0.2110995,0.4457838,-0.4587124,0.4724222,-0.006465319,0.817442,-0.5555688,0.1521428,0.216707,0.1347134,0.9341671,0.3043097,0.1703947,-0.8263312,-0.3867441,0.08291639,0.448905,-0.5409518,0.09732391,0.09044872,0.5500209,0.3933741,-0.1096305,0.4809584,-0.3520526,-0.010091,0.3136416,0.4251855,-0.003401115,-0.2568932,0.1596237,-0.1479316,-0.2971835,0.8134148,0.2373231,-0.2443783,0.7016455,0.2046343,0.6085693,-0.1290427,0.1423341,0.2282371,0.3785922,0.07108207,1.122382,-0.2533008,0.5404246,-0.4698392,-0.1216056,0.1723933,-0.4426859,-0.1566259,-0.2797096,-0.1296296,0.2472238,-0.2504576,-0.1095525,0.2134661,0.1091251,0.3544302,0.1863147,0.1647084,0.6245981,0.07090332,0.09541577,-0.2943741,-0.737049,0.04738212,-0.8234227,-0.4158326,-0.8255099,-0.1416257,0.002219573,0.3190623,-0.5268187,-0.3912248,-0.2917869,-0.02271339,0.4084552,-0.7152585,0.1391334,-0.09218868,0.1251855,-0.3638682,-0.1649872,-0.02333079,-0.05510483,-0.1126175,-0.4177345,-0.2113307,0.1847767,-0.5741546,-0.3686803,0.6787541,-0.4364818,0.3262499,-0.08110858,-0.1120234,-0.4286743,0.5466405,-0.06582209,0.5800173,-0.6796251,-0.4280171,-0.3197773,-0.0006195396,-1.158155,-0.2601627,0.07724733,0.23296,-0.5964467,0.09115729,-0.171542,0.1824851,-0.2854189,0.1419294,0.6670526,0.1621707,-0.02430429,0.3534314,-0.8645829,0.4283384,0.04932729,0.174489,0.4460101,-0.5680169,-0.01391655,0.09290783,0.06243385,-0.131411,0.1150529,0.1423239,-0.2116158,0.4312537,0.3675562,0.005723508,-0.1918494,-0.0312599,-0.2972178,-0.3254625,-0.02179685,0.07319531,0.3264431,0.2456981,0.123887,0.6589839,0.3311633,0.1154922,0.4067423,0.0192683,-0.003949549,0.1033823,0.08412639,-0.08684868,0.1366149,0.03444408,0.05137045,0.408963,-0.2749453,-0.09460255,-0.6422978,0.1984451,-0.6201432,-0.4933106,-0.3738506,-1.035453,-0.2982357,0.01039666,0.001159381,-0.5493949,0.01081615,0.09767539,-0.3464006,0.4578786,0.7636685,-0.3024719,-0.01314259,0.6105254,0.4588427,-0.6725616,-0.2980469,0.8879843,-0.7846579,0.3270876,-0.4895964,-0.4196264,0.2112874,0.4351066,-0.03031026,-0.07560718,-0.3159482,0.1024117,-0.3671643,0.2417015,0.3423925,0.3376731,0.07488589,0.05442928,0.2060296,-0.2865612,0.3482293,0.5072481,-0.5816604,0.3406399,0.1549836,0.2295016,-0.01756493,-0.06487071,0.2907838,0.3850757,-0.2222726,-0.117059,-0.1035908,-0.2594934,0.4057935,0.2036222,0.6001127,0.2741892,0.655693,-0.6526894,0.5327795,-0.00471338,0.3435845,-0.6698789,-0.1240523,0.4725121,-0.1888284,0.877853,-0.0009055522,0.1392203,0.513521,0.1432301,0.4026069,0.1559908,0.3254327,-0.08042488,-0.2365389,-0.1249038,0.2224926,0.1344258,-0.02818984,-0.1293447,-0.6655669,0.03962591,-0.8157412,0.3149141,-0.2117259,0.02270695,-0.9057645,0.9173811,0.1023552,0.2294339,-0.3189578,-0.8879467,0.01244694,0.3093123,0.3111978,-0.6243012,-0.2859592,0.1594244,0.1271319,-0.5120033,0.2735902,0.3195371,0.760816,-0.6479882,0.1861483,0.3474557,-0.03869842,0.1054756,-0.09287579,0.3016036,-0.7337166,-0.06860113,0.3366864,-1.077591,0.2960034,-0.4191046,-0.08177344,0.2226958,0.7050653,-0.7829241,0.08204269,-0.09345696,0.46235,0.7381712,-0.2194717,-0.09499393,0.1573226,0.4173524,-0.1247858,0.2225891,0.007938019,-0.07361125,0.4437886,-0.06998385,0.1141,0.108361,0.1404784,0.06316683,-0.4760009,0.1523347,0.4129946,0.2888597,0.6485813,0.5502198,-0.03705033,0.1593287,0.01393435,-0.1206807,-0.4168209,-0.2757623,-0.1043167,-0.3372089,0.2563375,0.2696772,0.5842577,-0.5284906,-0.112812,0.1408839,0.6508223,0.2494811,-0.4740618,-0.1100855,-0.3661255,0.05813725,0.1873532,-0.2424216,-0.5042478,0.275287,0.8038545,0.6071217,0.299626,-0.2408966,-0.1526796,0.1239891,-0.235454,0.513872,1.421772,0.522528,-0.05054108,-0.5015038,0.3339253,-0.2639061,-0.6980841,-0.6034966,0.5741315,-0.4572686,-0.8469505,-0.2978727,0.7440542,0.6297706,0.1581446,0.4469446,0.43838,-0.5897629,-0.1888307,-0.4700748,-0.0955783,0.4642224,0.4977005,0.1263756,0.452688,-0.5540633,-0.05144151,0.3010612,0.2625952,0.3637649,-0.1046289,0.5714462,-0.1541126,0.8326146,0.5948412,-0.3916175,-0.1277715,0.6797159,-0.2239534,-0.05565906,0.2137765,0.6505814,0.1202387,0.6178541,-0.5325466,0.456491,0.3088205,0.4747826,-0.2973148,-0.1808499,-0.4776888,0.724384,0.4339927,-0.3048043,-0.02102224,-0.2758146,-0.3611686,0.1439582,-0.3490691,-0.2645067,0.02854272,-0.2195378,0.6651109,0.4221974,0.2742366,0.4704434,-0.1299775,-0.08156146,0.2164922,-0.09712243,0.4370759,-0.1709427,-0.2570705,0.6729099,-0.6814643,-0.2902719,0.01690082,-0.004209488,-0.7946898,-0.4693991,-0.3522913,-0.1880014,-0.6739819,-0.1335313,0.4680176,-0.1068828,-0.3612322,0.4084139,0.5639542,0.7633874,-0.05948605,-0.3355934,0.007426716,-0.08141642,-0.5934778,-0.4808108,0.4350736,0.3166051,-0.1059262,-0.6065724,0.7084488,-0.3727735,-0.09144622,-0.3414982,0.1783913,-0.006853814,0.2643262,-0.04507597,-0.4638413,-0.5119463,-0.3679025,0.4242579,0.03477994,-0.1198508,-0.01092453,-0.1748206,0.5036111,-0.9868987,-0.4383915,-0.1909033,0.3355326,0.3483146,-0.5545622,-0.746604,0.2445665,0.6042947,0.03892284,0.4966279,0.4152456,0.4330532,-0.09820284,0.5697478,0.07597371,-0.5811919,-0.4117472,0.1658256,-0.1024704,-0.01647373,0.3142366,-0.4771167,-0.1565047,-0.01699746,-0.3517739,0.8387833,0.02036385,-0.9979053,0.3588886,-0.2168335,-0.3800841,0.5410249,0.8425608,-0.1006124,0.08395889,-0.07039343,0.3513565,-0.5858037,0.1292069,-0.7233782,-0.7239114,0.2113541,0.02681675,0.4842347,-0.7009672,-0.7802378,0.258252,-0.07115232,0.1819013,0.2397955,0.5306233,-0.6177879,-0.5976129,0.6022878,-0.2461184,-0.2557264,-0.4095041,0.09786167,-0.666694,-0.8666914,0.7450684,-0.4174176,-0.3764664,0.1800142,0.2000997,-0.248404,0.4713735,0.2314357,-0.2483724,0.4961336,-1.006257,0.3796003,0.7381829,0.8484131,0.01337233,0.07131974,0.07017867,-0.4079393,-0.08373928,0.5360624,-0.2254165,-0.5331934,-1.427775,-0.7419028,0.2720538,-0.1424737,-0.1078089,-0.5027883,0.7876236,-0.03874365,-0.03759075,-0.2825076,0.2377555,-0.1773539,0.3620619,0.1510642,-0.2438398,0.1745114,-0.277346,-0.0518481,-0.2431883,-0.07769907,-0.292297,0.05998032,-0.1305183,-0.0748394,0.007379486,-0.06170928,-1.12354,-0.4136383,0.08863899,0.7020532,-0.1594141],"scale":[0.6155075,0.8248375,0.02674016,0.6142849,0.6256761,0.5814842,0.485216,0.5999475,0.5460978,0.6156665,0.5005455,0.5065439,0.5356938,0.5744815,0.670859,0.5533553,0.5789059,0.5006808,0.6841433,0.5481608,0.632119,0.524997,0.5625786,0.5873831,0.637766,0.6114758,0.6543257,0.6618055,0.591013,0.6399149,0.5300155,0.5285936,0.5827038,0.5447106,0.6559701,0.5496933,0.5498607,0.6157165,0.5469386,0.6485208,0.6045162,0.7028357,0.6225433,0.5716958,0.5472157,0.6924104,0.6167328,0.6463514,0.5388227,0.6565654,0.5963377,0.5701787,0.6253617,0.6187285,0.6129137,0.7304449,0.590892,0.5666319,0.532524,0.5651333,0.6513898,0.4924079,0.5385199,0.5843307,0.5350201,0.5345627,0.619728,0.5879078,0.7104504,0.6729164,0.5119479,0.5942653,0.7182179,0.481821,0.5725955,0.6230263,0.6544721,0.5762303,0.6214518,0.5776057,0.6070104,0.6175582,0.6835371,0.5243011,0.6629959,0.6130564,0.6263886,0.6126936,0.5512672,0.5722461,0.5663234,0.629266,0.5482182,0.5574095,0.4513722,0.587571,0.5706199,0.5151059,0.5059349,0.5240197,0.5392588,0.5369709,0.6032877,0.54979,0.5283965,0.7433857,0.6245358,0.4827977,0.4887318,0.7193109,0.5852737,0.7800805,0.5939348,0.5829546,0.5180589,0.5861515,0.5747288,0.5580289,0.5772514,0.6776592,0.2498332,0.5886985,0.5278683,0.6238019,0.6332084,0.5748426,0.6042811,0.6048797,0.5274439,0.5613468,0.5996269,0.5289572,0.6374771,0.6172618,0.6458388,0.6578508,0.7794316,0.6031859,0.5416301,0.6878816,0.5777255,0.6978018,0.5329522,0.5425199,0.567581,0.5242924,0.616647,0.5604206,0.6124942,0.6403136,0.58866,0.643978,0.5468679,0.6328025,0.5270499,0.535533,0.5836776,0.5923755,0.6150986,0.5798633,0.6014654,0.6108065,0.6971773,0.5515275,0.4979567,0.5981344,0.4873118,0.7044326,0.6070051,0.547692,0.5917478,0.5897469,0.5685772,0.6403615,0.5750355,0.5365714,0.5818842,0.6534599,0.6327458,0.5332368,0.6963605,0.6090566,0.601325,0.5701927,0.6423567,0.6286187,0.4856367,0.6905058,0.6205063,0.6156494,0.6010503,0.5258161,0.4631098,0.6252835,0.5946114,0.5847339,0.5840051,0.6901439,0.5784108,0.6725754,0.5447835,0.5411556,0.5815677,0.5940584,0.5834588,0.5182651,0.5467023,0.502837,0.6440272,0.5629144,0.7365578,0.5963055,0.6378657,0.6031861,0.5945289,0.6415956,0.6068924,0.6875726,0.5456737,0.7289268,0.6572531,0.6073338,0.4888068,0.6187376,0.6031299,0.5793348,0.6700967,0.5802762,0.6800482,0.581999,0.6389552,0.6067804,0.5002932,0.5682992,0.5523749,0.4581715,0.5246977,0.6363951,0.5302296,0.5756958,0.6143601,0.5116866,0.5484516,0.5467836,0.6462684,0.6190406,0.6335344,0.6494481,0.7229508,0.6670152,0.6235358,0.5261656,0.7392584,0.65572,0.5841229,0.5535738,0.6077495,0.5462086,0.5565047,0.6814615,0.5532145,0.6290067,0.6011793,0.6218452,0.5343924,0.5728839,0.4783391,0.4843717,0.4933091,0.5990866,0.5172539,0.6045332,0.5250634,0.5689979,0.5389318,0.6169594,0.5356955,0.6316303,0.5932775,0.5715493,0.6241019,0.628868,0.6550378,0.5744429,0.4887127,0.5757361,0.6435665,0.5476888,0.544106,0.6430659,0.7666001,0.535871,0.5496886,0.5710126,0.5154025,0.556009,0.6692857,0.6163673,0.6109365,0.5500831,0.5981713,0.5963959,0.6522076,0.6406017,0.6275879,0.5353427,0.608831,0.6345989,0.5890539,0.569491,0.6632258,0.6023538,0.5772482,0.6609926,0.6095428,0.7250654,0.4411773,0.5945923,0.5109438,0.6365787,0.5862963,0.6523631,0.7840179,0.6275884,0.5578164,0.5750899,0.5409919,0.6482154,0.5788105,0.6584408,0.5258356,0.4981791,0.7478875,0.7621698,0.5124282,0.650414,0.5440485,0.5123618,0.7023686,0.61652,0.6316227,0.6204471,0.638082,0.6767154,0.5931037,0.6468258,0.8600935,0.5715152,0.6945409,0.6335925,0.6607842,0.5404404,0.5235488,0.5561011,0.6061571,0.6079,0.7351029,0.6217366,0.479704,0.5357508,0.6242567,0.5575889,0.6037942,0.5798342,0.5748736,0.445742,0.520473,0.495968,0.5404392,0.5344051,0.6043164,0.6266574,0.6046663,0.5724185,0.5895491,0.5449085,0.6331799,0.7258661,0.64723,0.5556249,0.5781994,0.5788088,0.6710851,0.5672715,0.5832971,0.6608225,0.6553141,0.5849762,0.6545134,0.5375202,0.488781,0.6293655,0.4579677,0.5850025,0.578041,0.6052013,0.6531045,0.5268869,0.6228841,0.516917,0.7666337,0.5770531,0.5722528,0.6149195,0.4656397,0.5710898,0.5289977,0.6318329,0.6111778,0.6272259,0.6238615,0.6180924,0.5313161,0.6335086,0.5289049,0.6122349,0.5381466,0.5092262,0.7432839,0.6539576,0.5863983,0.5422639,0.6686394,0.6445659,0.6115527,0.6869823,0.6299191,0.6918408,0.6016626,0.5693574,0.5543726,0.53639,0.5510582,0.566889,0.5627877,0.5785917,0.4838554,0.5287028,0.6215586,0.5175172,0.5612846,0.5954745,0.5481928,0.56243,0.5879635,0.5548673,0.5366085,0.5153573,0.5403868,0.5926041,0.5246247,0.7505228,0.6829119,0.6421562,0.6479905,0.5573487,0.5219153,0.5245898,0.5541129,0.5919188,0.695976,0.6063105,0.6048505,0.6462925,0.7218212,0.5528603,0.5254732,0.5640496,0.6286945,0.6330588,0.6243293,0.5613921,0.6398786,0.6209098,0.5072159,0.5867214,0.6156533,0.4472919,0.6226872,0.5272717,0.6534818,0.6313183,0.5445362,0.6283556,0.5487767,0.5841911,0.5864306,0.5874011,0.5805179,0.5931626,0.654185,0.4503158,0.7083927,0.513081,0.5918003,0.5650221,0.6225765,0.5834789,0.5623802,0.6567564,0.7218521,0.6269769,0.5593953,0.701178,0.5747839,0.7997879,0.6201241,0.5865676,0.5417453,0.5796511,0.6404603,0.5923559,0.6192829,0.5591599,0.5240742,0.5565253,0.5917208,0.7507246,0.51522,0.5765948,0.5832943,0.6607012,0.6099326,0.5976201,0.6045,0.5946208,0.5440885,0.5248239,0.8213101,0.6332534,0.6180819,0.5367266,0.6738193,0.5418931,0.5456432,0.659101,0.5753131,0.4974725,0.7240758,0.5707442,0.5519462,0.5866534,0.623092,0.6132329,0.5928081,0.6146493,0.6518283,0.663423,0.645339,0.5128292,0.5989862,0.6546879,0.7317142,0.6429935,0.6181269,0.6013998,0.5659298,0.4703015,0.5707121,0.7030603,0.6422404,0.7364098,0.4792674,0.5033281,0.6007081,0.6978429,0.5218083,0.5017684,0.1278938,0.7095493,0.7575089,0.5313378,0.5301607,0.60196,0.6145668,0.6111484,0.4973831,0.6632907,0.500324,0.7547762,0.5494849,0.5661712,0.670777,0.6176572,0.5863189,0.5781981,0.5601186,0.5303975,0.6309659,0.6143138,0.5950891,0.5738667,0.5497281,0.7477118,0.6803349,0.5636376,0.5812557,0.6036691,0.5745433,0.6306741,0.6048383,0.4948067,0.591919,0.6748828,0.560991,0.5294437,0.5378476,0.59625,0.6611686,0.6091186,0.6139128,0.563123,0.5967546,0.5372544,0.5686656,0.5347543,0.6497713,0.6419713,0.6328455,0.5810452,0.6045178,0.4808689,0.5514514,0.5309146,0.6043385,0.5313117,0.6265445,0.5361842,0.6585662,0.6630982,0.6101635,0.6431947,0.5780619,0.5670673,0.6406222,0.5079422,0.6168659,0.6595012,0.6263723,0.6197663,0.8455239,0.5562099,0.5906882,0.5009205,0.6154957,0.6489616,0.5929086,0.5812043,0.609776,0.5302754,0.5941085,0.47118,0.6691933,0.7906243,0.5370982,0.5004277,0.5828952,0.5928747,0.4949737,0.5293371,0.6770466,0.6504442,0.5344361,0.5890156,0.6169684,0.5380424,0.6698239,0.545744,0.5499669,0.6520988,0.5308125,0.6504659,0.5834443,0.5712346,0.7096493,0.5625581,0.0777707,0.5387812,0.6793579,0.4966901,0.5647543,0.5361838,0.6239884,0.5576216,0.5670378,0.6335837,0.7120142,0.7015138,0.4892239,0.5065537,0.5522744,0.581655,0.5446488,0.5851996,0.5276068,0.6724837,0.5754872,0.6619438,0.5629541,0.5870894,0.6390545,0.5835344,0.5312888,0.4584282,0.5838685,0.5412848,0.6639531,0.4927921,0.5509225,0.6639507,0.4782542,0.6225312,0.5192799,0.5971486,0.5643349,0.53873,0.5720385,0.4973709,0.6089328,0.5432914,0.6019363,0.4900594,0.6076783,0.6150031,0.5578912,0.533079,0.5207226,0.476267,0.5903121,0.6069649,0.5281025,0.6018351,0.7350505,0.615069,0.5020702,0.5283467,0.5641055,0.5834974,0.5326375,0.729352,0.7215746,0.608544,0.5758399,0.5876062,0.7134667,0.5916188,0.5360348,0.4794996,0.6988902,0.6260611,0.4881058,0.5158315,0.6377789,0.5345317,0.5243957,0.5137756,0.5412884,0.761745,0.5510195,0.5945722,0.6203364,0.5114369,0.5428796,0.6980308,0.6167882,0.5214372,0.5335545,0.5983073,0.5336826,0.5409212,0.5175825,0.6239682,0.6858333,0.6386727,0.5335581,0.573344,0.5802596,0.5629446,0.6417381,0.502143,0.5890576,0.5536178,0.5772877,0.6396973,0.5238393,0.6550495,0.6729584,0.6255775,0.5761613,0.6401489,0.6238315,0.4730162,0.7044892,0.5741435,0.6925907,0.5216746,0.4899056,0.5387481,0.5846586,0.6788549,0.5026061,0.6035258,0.6409978,0.593379,0.5450886,0.5981246,0.5739928,0.5602491,0.6071701,0.6204602,0.5624887,0.4927031,0.5296332,0.5953919,0.673958,0.7399993,0.5780631,0.5654088,0.7046805,0.71037,0.5481478,0.6033564,0.5037361,0.57775,0.6581267,0.5491322,0.7496602,0.5834986,0.4920978,0.6197516,0.6385415,0.6094864,0.7543287,0.5238138,0.5184896,0.5683423,0.5845492,0.6243179,0.6049956,0.5611378,0.6000034,0.636353,0.5748083,0.5102046,0.5220842,0.5704151,0.5569609,0.5679321,0.5535929,0.5467297,0.5074196,0.6031627,0.5411272,0.614628,0.7272304,0.6161706,0.5949444,0.6473499,0.5207303,0.5357474,0.4860044,0.5584085,0.6413735,0.5717425,0.5783392,0.5352908,0.5499347,0.614266,0.5064596,0.5866136,0.5974354,0.6613007,0.6080066,0.5697174,0.6037127,0.6407561,0.5968031,0.9083801,0.5286032,0.5948578,0.4393281,0.6409906,0.5498536,0.6475044,0.5948999,0.634885,0.6578872,0.5301111,0.503492,0.6341914,0.6176804,0.6283861,0.5841851,0.6815812,0.6144866,0.4915109,0.675721,0.5922243,0.5471799,0.5992662,0.5205028,0.5527524,0.5981768,0.6406162,0.568134,0.5807504,0.5555369,0.5518865,0.558381,0.5830428,0.582075,0.5633293,0.5362641,0.5572573,0.6891107,0.6458916,0.5718122,0.5112998,0.6478552,0.5285421,0.5414606,0.5047696,0.5100835,0.7284479,0.6365259,0.6556651,0.6618497,0.6031416,0.5319332,0.6255037,0.50951,0.7417703,0.5908963,0.6151908,0.5944838,0.5282292,0.6546175,0.596453,0.5280754,0.6862189,0.5873862,0.5477501,0.7031209,0.6352437,0.6091922,0.7157676,0.518073,0.6303801,0.625944,0.5459452,0.6603546,0.5297729,0.5348626,0.6302821,0.6660677,0.5713795,0.7642088,0.5532488,0.6741322,0.5108187,0.4777242,0.6265539,0.5887375,0.48051,0.4767247,0.6553469,0.5849385,0.6266537,0.6690585,0.5515077,0.5542744,0.5923048,0.554281,0.7185712,0.5957693,0.5781534,0.5266665,0.6114613,0.5856783,0.6130557,0.5325071,0.6365718,0.5636497,0.729442,0.585664,0.571825,0.6593577,0.6158379,0.5979924,0.5815463,0.53763,0.6314678,0.5856379,0.5970947,0.5975921,0.6056913,0.5478976,0.5675983,0.5823288,0.5297955,0.5719825,0.5089702,0.7163203,0.5779218,0.5148935,0.5014884,0.6608576,0.6454417,0.5799256,0.6371446,0.564837,0.5986819,0.5620112,0.5909983,0.5127941,0.5596883,0.5563,0.7522002,0.5681918,0.8860067,0.6141194,0.6261127,0.657106,0.5299855],"coef":[0.007394679,-0.002940499,0.002231471,0.003008347,0.002238261,0.007360649,0.007612488,0.003508385,-0.003139701,-0.004148483,-0.002868706,-0.002002524,0.003443891,-0.002412554,-0.00028658,0.006046116,0.003603566,-0.001584911,0.0006225354,-0.0005212398,0.0003571358,0.002041639,-0.00072591,-0.0003017293,0.0006647023,-0.00999856,0.0002688097,-0.01005908,0.01111686,0.003539287,0.002116117,0.004659795,-0.009812538,-0.0002135891,0.01711863,-0.004326536,0.004208958,-0.006626535,-0.01103095,-0.0008041485,-1.591042e-06,0.0003809078,-0.003117289,-0.01012629,-0.003743719,0.007249056,0.004968989,-0.001697086,0.006368896,-0.006990463,0.002851702,-0.007860066,-0.004136799,0.003727675,-0.006241982,0.003187524,0.01032458,-0.00289568,-0.002520558,-0.00325043,0.01463068,0.002180037,0.00532815,-0.001422023,-0.01099942,-0.008825146,0.006248127,0.001672356,-0.002681624,0.006754056,0.00517672,-0.0003722796,0.00301321,-0.0005085433,-0.006397908,0.0006761076,0.01097419,0.00576015,0.01640462,0.002236118,-0.004829745,0.003076049,0.008795366,0.00494402,0.003221629,-0.00543733,0.01141055,0.0009328089,0.01606586,0.001637512,0.009835583,-0.003892962,-0.001187951,-0.006681007,0.007481094,0.004058937,0.001255152,0.01470205,0.001665226,0.001209061,0.01199435,0.005872526,-0.005874878,-0.003314566,0.005052363,-0.006995115,-0.002364131,0.002959501,-0.008458814,-0.001951301,0.005284252,0.00738728,-0.006915002,-0.004724607,-0.0003560658,-0.01071726,0.004876218,0.001073142,-0.01101479,6.457591e-05,0.002899261,0.002880682,-0.0008936743,-0.00227927,-0.01259918,0.003161614,0.01124955,-0.004732593,-0.001712121,0.002325533,0.009166411,-0.00690346,-0.00586284,0.0079097,-0.005973406,-0.003563893,0.01019786,-0.004816829,-0.006293419,-0.006443012,-0.003646965,0.004649714,-0.009328741,0.003846627,-0.005340651,-0.01136814,-0.002345767,0.004653198,0.004270135,-0.008178611,0.001664404,-0.005938202,-0.00469071,0.001705292,-0.004355393,0.004588602,-0.003704152,-0.007046973,0.0003958298,0.005540459,1.047537e-05,0.004094415,0.001425726,-0.001361747,-0.009454532,0.01308951,-0.0002617154,-0.00919452,0.008076716,0.008199428,0.0004621919,0.002138572,0.0008496664,-0.007656513,0.006851468,0.005141774,-0.002220174,0.005326246,-0.005015758,-0.00847125,-0.009500628,0.0133054,-0.003076288,0.005994316,-0.008395687,0.005967332,0.00231981,-0.01296755,-0.001065279,0.003380039,-0.002156744,-0.004505685,0.004761902,0.003869201,-0.001063564,-0.008649692,0.0005341132,-0.007411504,-0.00509612,0.007555084,0.005378761,-0.01098347,0.002566274,0.01061495,0.0009521948,0.002056702,-0.004856521,0.001460348,0.005552104,-0.01043953,-0.009458402,-0.003179877,-0.004565412,0.003152793,0.01135738,0.00320693,-0.01253041,-0.007145672,-0.0006596596,-0.009261879,-0.01360331,0.001453907,-0.01221539,0.0005420789,0.005428738,-0.001357457,0.006191249,-0.006201308,0.00302898,0.006369665,0.0138955,-0.003115889,0.003824422,-0.002864812,0.003745621,0.003160407,0.003374002,0.007172451,-0.0006758025,0.006190439,-0.002884509,-0.004694084,0.0004927699,0.003061941,-0.004826836,-0.002790329,0.0008686545,0.0006017592,-0.005325567,0.007234272,-0.007642846,-0.006636418,0.001778255,-0.003336133,-0.0003264072,0.01028779,-0.007194203,-0.01209561,0.00306287,-0.009262765,0.01187121,-0.002946153,-0.01663326,0.006889485,-0.008070929,0.004003723,5.837359e-05,-0.01082712,-0.00969996,-0.0005673867,0.002538581,-0.00231447,0.003392511,-0.01229933,-0.007887664,0.0006176278,0.001073702,0.004785642,0.002802597,-0.0008616805,-0.007347248,0.003659135,0.007071194,-0.001841724,-0.0106348,-0.002971,-0.005255058,0.003389758,-0.004652357,-0.004871349,0.00687967,-0.006192948,0.003346703,-0.004427687,0.00921298,0.001086632,-0.0006284147,-0.003242836,0.004680303,0.005794115,-0.0001569718,-0.004529224,-0.001032608,0.01304563,0.004272289,-0.001045833,-0.004881987,0.0009290595,-0.003081164,-0.006998895,0.0005814679,0.001931814,0.003091122,-0.001441073,0.008547549,-0.004273708,0.001708942,0.002843597,0.008844968,0.00841743,0.0005744179,-0.004988946,-0.001936099,-0.006173924,-0.002898506,0.01623274,0.004209471,-0.001218078,-0.004535365,-0.005939636,-0.002216089,0.0008144972,-0.002873595,0.001003809,-0.0008351231,0.002534225,-0.001513385,0.01022837,-0.006906078,-0.006339413,-0.004730889,-0.01158667,-0.009040721,0.004039406,0.01207422,-0.003118783,0.003347708,0.003944753,-7.756402e-05,0.002456411,0.0002306333,-0.004317603,-0.002114821,-0.0006298959,0.005126943,0.001327149,0.0004855938,-0.004568687,0.01275824,-0.01010963,0.006973222,0.00510748,-0.002568089,-0.01094245,0.006400532,0.006277358,0.006073627,-0.002059988,-0.006037258,0.001667123,0.004465081,0.007036051,-0.004978353,-0.007462993,-0.01401696,-0.004347122,0.009549656,0.005789888,-0.009264986,0.005498796,0.005934633,-0.002878462,-0.00855451,0.001212558,0.01143942,0.0005659733,-0.005515259,0.001329393,0.002987053,-0.01097533,0.004057244,-0.002594732,-0.00197329,0.001784537,0.00455563,-0.003026758,-0.0062793,0.003121252,-0.003313793,0.003479671,0.005009186,0.001166011,-0.002564599,-0.002012179,0.006155922,-0.005857994,-0.005521556,-0.0009507071,-0.003523495,-0.003122084,-0.006156372,-0.006021301,-0.005257257,-0.006754176,0.003649644,-0.004052794,-0.006192632,-0.004481063,0.01344273,0.007976584,0.008681426,0.003882694,-0.004526294,-0.0004970474,-0.005345154,-0.009232203,0.0006196997,-0.007114638,0.00342749,-0.002364046,0.002979408,-0.003713211,-0.0001164204,-0.009991255,0.0007781705,-0.002548281,0.001545828,-0.006835154,0.002938411,0.0003617409,0.003350467,-0.01224548,0.003824286,0.00393083,0.01297645,0.001046647,-0.005443193,0.003029101,0.00448287,-0.001364246,0.001616734,0.003130807,0.01089875,0.005497903,-0.004492386,-0.001828225,0.009539609,0.01255535,-0.0003604909,-0.01096954,0.01128496,-0.00845693,-0.002644881,-0.002543778,0.0002057598,-0.008246854,0.004477246,-0.00435453,-0.007878193,0.007995823,0.001813632,0.005892122,0.00232164,0.0002291743,0.00121634,-0.002346246,0.0006171341,0.005737503,0.001119963,-0.002237085,0.01411216,0.002151434,0.001347329,-0.01212406,0.003327228,5.709185e-06,0.00385803,0.008932001,-0.001149664,0.00170985,0.009075873,0.007340814,-0.01164383,-0.004455027,0.006861302,0.001664946,-0.008928715,-0.0002082891,-0.006786805,0.006562327,0.004014797,-0.007489363,-0.00632124,-0.01392286,-0.00687822,0.004593594,0.01282539,0.004110895,0.005067676,0.009637859,-0.002472993,0.008758576,-0.001688973,-0.003152887,0.001027724,-0.004619429,-0.006115543,0.008618426,-0.002459004,-0.001689184,0.001832447,0.002202725,-0.002400812,0.003530095,-0.004611172,0.004105961,-0.006145265,-0.003436338,0.002194045,0.01210985,-0.00607655,-0.0003862238,-0.005337204,0.001004828,-0.002860071,-0.004823612,-0.00495022,0.001322755,0.01096231,0.001764776,-0.0037868,0.006560515,0.005855331,-0.001317761,-0.002565192,0.00143628,0.000533766,-0.007625956,0.00298958,2.379239e-05,-0.0007086608,0.01206918,-0.01899097,0.007813991,-0.003337454,-0.001076594,0.002758758,0.003051341,0.003865424,-0.0004888235,0.001520762,-0.001633086,0.001368526,-0.007382474,0.003669574,-0.00217898,0.0003016679,0.0100176,-0.003743433,-0.00377761,-0.01910423,-0.01013415,-0.007807233,0.007753437,0.0006917946,-0.008249902,0.008827655,0.01213914,-0.004956932,0.00866456,-0.0009707253,0.001441706,-0.004124877,0.000119748,-0.006259766,0.01117049,0.003517572,0.001548496,0.002649052,-0.001008062,0.01065463,0.004864047,0.004969797,-0.001066783,0.009347588,0.005681266,0.007080629,0.001894876,0.004217185,-0.002587612,0.001851458,-0.007399225,0.006527602,-0.00653319,0.005333494,-0.003304924,0.001932486,0.007708729,0.009195247,-0.01309135,0.002558252,-0.001392682,0.007663452,-0.01242963,0.01168297,-0.004206192,-0.0009480655,-0.008586756,-0.001209063,-0.002291544,-0.004920784,-0.004173508,0.001533256,0.003530827,-0.01147877,-0.006458248,0.008716954,-0.006377199,-0.009122899,-0.004937027,0.00473956,0.009149561,0.004476914,0.006022923,-0.007718081,0.0001189338,0.002633624,0.001925623,0.005769649,0.001683699,0.009023442,-0.004969394,-0.005294708,0.004007297,0.001623024,-0.01505969,0.008228428,-0.004364687,0.003870235,-0.0118982,0.007466062,-0.003296422,0.003310297,-0.01207717,0.001867788,0.006353524,0.006767785,0.001011406,-0.004627911,-0.007952979,-0.01251021,0.000656662,-0.00348888,0.001977641,0.005963733,-0.001628953,0.005332387,0.003417208,-0.001375366,-0.005640631,-0.008068215,0.003628618,-0.007041277,-0.002077576,-0.00125906,0.005321937,-0.001467249,-0.003100596,-0.003225503,-0.002027267,-0.008586757,0.0004882673,0.005392355,-0.005345887,0.008313364,-0.00506631,-0.003172485,0.004040319,-0.0106325,0.003704146,0.002173426,-0.002598855,-8.204681e-05,-0.01017352,0.01102265,0.002069093,0.005560528,-0.007324552,0.00226353,-0.002899946,-0.002324252,0.001544,0.007114748,0.01338044,0.01307125,-2.84553e-05,0.009082976,-0.007308798,0.01064123,0.007010413,-0.005090025,-0.008916761,-0.008081154,0.001146193,-0.01254412,-0.004906605,0.01001789,-0.006296965,-0.009892301,0.003662091,-0.01138326,0.0001905637,0.002665685,-0.007916882,-0.001865393,0.004321302,0.001466995,-0.005672188,-0.003545143,0.007019173,-0.002927725,-0.0153909,-0.003308712,0.004458721,0.002966107,0.002281526,0.00267409,0.01099474,0.004727584,-0.001251362,0.00487741,0.0008273277,-0.0100142,-0.01445519,-0.01199575,0.007761359,0.003536842,-0.009090737,-0.007101887,0.005677033,0.001348262,-0.001400782,0.007135307,-0.003894884,-0.006166093,0.001128197,0.004512827,0.0112073,0.00965132,-0.001490725,0.006872826,-0.002458324,0.004659726,0.003417628,-0.003857332,-0.00097704,-0.003043846,-0.0007600015,-0.0132309,-0.0005726043,-0.01100879,-0.002473566,0.003263952,0.004034002,-0.006260104,0.0004218656,0.00573726,-0.005093029,-0.008908319,-0.0005268305,0.0009992615,-0.005715972,0.002392548,0.003378839,0.001970934,-0.005205779,-0.001629647,0.0001032829,-0.0007460475,-0.00287508,0.006606052,-0.006633387,-0.0008981903,-0.002193674,0.01234714,-0.0002814124,0.01048157,-0.002608425,0.01143649,0.002480458,0.006550969,0.001784771,-0.01167065,-0.003068703,-0.003791496,0.004121821,-0.002557997,-0.007519875,-0.001856686,-0.001017729,-0.0002816066,-0.001388057,-0.002581472,0.002977655,-5.777985e-05,0.007392737,-0.004107825,0.01035653,-0.01079599,-0.002760975,-0.008746715,0.002211065,-0.008990285,-0.004637534,0.002347339,0.002056087,-0.0003824702,0.005513961,0.001898044,0.001584546,0.003321489,0.009206716,-0.007564847,0.006303152,-0.005763104,-0.002240016,0.005966093,-0.004797295,-0.006908375,-0.005405003,0.004448306,0.004226652,0.003439284,0.006863541,0.004306395,-0.00233822,0.003305765,0.003775032,0.0001640839,-0.00988129,0.0007695255,-0.00401232,0.005052484,0.006008639,-0.005735995,0.007267767,0.005193672,0.002557727,0.007753906,-0.001164661,0.001786279,-0.01006128,0.0105718,-0.002667065,0.0006575111,-0.006394584,-0.003499172,-0.005685134,0.003084505,0.008324876,0.0009077648,-0.001057444,-0.00289125,-0.007362998,8.906879e-05,-0.01188069,0.003423881,0.01482527,-0.001361662,-0.01304995,0.00261435,0.0008998231,0.004707444,0.01208903,0.005133022,0.003469537,-0.008900036,-0.003578091,0.004973987,0.002781875,0.001884541,0.005198881,-0.008332632,0.005028625,-0.003962245,-0.004110232,-0.00779653,0.01017609,0.003464567,0.006037483,-0.00635958,-0.003632314,0.01088287,-0.005975195,0.008660062,-0.001388059,-0.005210334,-0.01383009,6.077788e-05,0.005989603,-0.004057872,0.009583162,0.005396549,-0.001338527,0.002076693,0.001722893,-0.00196896,-0.005945977,0.001206902,0.006952088,0.0061716,0.01143839,0.001967938,0.00873134,-0.001411688,0.000589734,-0.001192618,-0.003088237,-0.004534796,-0.002129419,0.0008015547,0.007773221,-0.001475975,0.009593515,-0.003713135,0.005044758,-0.0003987613,-4.540961e-06,-0.001635269,0.002341773,-0.00784481,0.00272832,0.0001597244,-0.006259416,0.003514709,0.01250319,-0.003662053,0.003727513,0.006099203,0.006274804,-0.007960974,-0.008985842,0.007516121,-0.003239858,-0.006320148,0.007625207,-0.000632404,-0.01466593,-0.009142424,0.0123971,-0.003703255,0.008681816,0.001212176,-0.003684007,0.005350247,0.001444348,-0.002933935,0.008847475,0.004147787,-0.0002022353,0.007106681,-0.006469437,-0.001359837,0.008294632,0.003939551,-0.01001788,0.007752325,0.004537971,0.001837559,0.005147754,-0.005880887,-0.00425966,4.043391e-05,-0.002710627,-0.004092218,-0.004929549,-0.006239962,0.003238792,-0.01026804,0.005824432,-0.01088489,-0.001233662,0.010419,0.00170982,-0.006989815,0.002310996,0.005583694,0.007158855,0.001419935,-0.001873746,-0.009828273,0.001855809,-0.002285584,-0.005516432,0.01611738,-0.006785667,-0.005215079,-0.004938888,0.009736211,-0.00132022,-0.01438863,0.007397627,-0.005142085,-0.00870772,-0.01203772,0.006205342,-0.008376894,-0.001030536,0.01239627,-0.01096556,-0.0002532619,-0.006493317,0.006140697,0.005574154],"b":-0.33326161653571196,"cal":{"a":1.430385868303608,"b":-0.6371433568729924},"info":{"棟数":232,"D5以上":78,"地区":17,"C":0.001,"交差検証AUC":0.861,"交差検証AP":0.732,"確率の合計":78.0,"学習":"能登2024 悉皆調査の建物、iPhone（2024年6月27〜28日）とドラレコ（6月7〜10日）の写真の切り出し"}}};          // { aerial: {mean, scale, coef, b, cal:{a,b}, info}, ground: {…} }
+const MODEL_PARTS = [{"url":["https://cdn.jsdelivr.net/gh/shiraishi2022/zenkai-sim@90e0e413cba7c65aa5edb14df2403b455dd9127c/swin_q8w.onnx.00","models/swin_q8w.onnx.00"],"bytes":19000000},{"url":["https://cdn.jsdelivr.net/gh/shiraishi2022/zenkai-sim@90e0e413cba7c65aa5edb14df2403b455dd9127c/swin_q8w.onnx.01","models/swin_q8w.onnx.01"],"bytes":19000000},{"url":["https://cdn.jsdelivr.net/gh/shiraishi2022/zenkai-sim@80cec71161623cfd0c85d67bf148a0ea00d0dc81/swin_q8w.onnx.02","models/swin_q8w.onnx.02"],"bytes":19000000},{"url":["https://cdn.jsdelivr.net/gh/shiraishi2022/zenkai-sim@80cec71161623cfd0c85d67bf148a0ea00d0dc81/swin_q8w.onnx.03","models/swin_q8w.onnx.03"],"bytes":19000000},{"url":["https://cdn.jsdelivr.net/gh/shiraishi2022/zenkai-sim@21e633ff686a390a9bf40df5ac84d5ae7052c47e/swin_q8w.onnx.04","models/swin_q8w.onnx.04"],"bytes":17737659}];   // [{ url: [jsDelivr, 予備], bytes }]
+const SAMPLE = { name: '珠洲市宝立町鵜飼', layer: '20240102noto_suzu_0102do', date: '2024年1月2日', x0: 231006, y0: 101663, nx: 4, ny: 4 };   // 国土地理院「令和6年能登半島地震」正射画像（ズーム18）
+
+const ml = { ready: null, session: null, ep: '' };
+const loadScript = src => new Promise((ok, ng) => { const s = document.createElement('script'); s.src = src; s.onload = ok; s.onerror = () => ng(new Error('読み込めません：' + src)); document.head.appendChild(s); });
+function setModel(text, cls) { const a = $('model'); a.textContent = text; a.className = 'status' + (cls ? ' ' + cls : ''); }
+async function fetchPart(urls, onBytes) {
+  let cache = null; try { cache = await caches.open(MODEL_CACHE); } catch (e) { /* 保存できない環境では毎回読む */ }
+  if (cache) { for (const u of urls) { const hit = await cache.match(u); if (hit) { const b = new Uint8Array(await hit.arrayBuffer()); onBytes(b.length); return b; } } }
+  let last = null;
+  for (const u of urls) {
+    for (let a = 0; a < 2; a++) {
+      try {
+        const r = await fetch(u); if (!r.ok) throw new Error('HTTP ' + r.status);
+        const rd = r.body.getReader(), chunks = []; let n = 0;
+        for (;;) { const { done, value } = await rd.read(); if (done) break; chunks.push(value); n += value.length; onBytes(value.length); }
+        const b = new Uint8Array(n); let o = 0; for (const c of chunks) { b.set(c, o); o += c.length; }
+        if (cache) { try { await cache.put(u, new Response(b)); } catch (e) { /* 容量不足などは無視 */ } }
+        return b;
+      } catch (e) { last = e; }
+    }
+  }
+  throw last || new Error('download');
+}
+function loadModel() {
+  if (ml.ready) return ml.ready;
+  ml.ready = (async () => {
+    const total = MODEL_PARTS.reduce((s, p) => s + p.bytes, 0); let got = 0, shown = 0;
+    setModel('判定器を読み込んでいます… 0 / ' + Math.round(total / 1e6) + ' MB（初回だけ。2回目からは保存したものを使います）', 'run');
+    await loadScript(ORT_BASE + 'ort.webgpu.min.js');
+    ort.env.wasm.wasmPaths = ORT_BASE; ort.env.wasm.numThreads = 1;
+    const parts = await Promise.all(MODEL_PARTS.map(p => fetchPart(p.url, n => { got += n; if (got - shown > 2e6 || got >= total) { shown = got; setModel('判定器を読み込んでいます… ' + Math.round(got / 1e6) + ' / ' + Math.round(total / 1e6) + ' MB（初回だけ。2回目からは保存したものを使います）', 'run'); } })));
+    const buf = new Uint8Array(parts.reduce((s, p) => s + p.length, 0)); let o = 0; for (const p of parts) { buf.set(p, o); o += p.length; }
+    setModel('判定器を準備しています…', 'run');
+    const eps = navigator.gpu ? ['webgpu', 'wasm'] : ['wasm'];
+    for (const ep of eps) {
+      try { ml.session = await ort.InferenceSession.create(buf, { executionProviders: [ep], graphOptimizationLevel: 'all' }); ml.ep = ep; break; }
+      catch (e) { console.warn('判定器を ' + ep + ' で動かせません', e); }
+    }
+    if (!ml.session) throw new Error('判定器を動かせません');
+    // 試しに1回動かして、動く速さを確かめる（初回は遅いので2回目を測る）
+    const x = new ort.Tensor('float32', new Float32Array(224 * 224 * 3), [1, 224, 224, 3]);
+    await ml.session.run({ x }); const t0 = performance.now(); await ml.session.run({ x }); ml.ms = performance.now() - t0;
+    setModel('判定器の準備ができました（' + (ml.ep === 'webgpu' ? 'GPUで計算、1棟あたり約' : 'CPUで計算、1棟あたり約') + (ml.ms < 1000 ? Math.round(ml.ms) + 'ミリ秒' : (ml.ms / 1000).toFixed(1) + '秒') + '）。');
+    return ml.session;
+  })();
+  ml.ready.catch(e => { console.error(e); ml.ready = null; setModel('判定器を読み込めませんでした。通信の状態を確かめて、もう一度画像を入れてください。', 'warn'); });
+  return ml.ready;
+}
+async function swinFeatures(crops) {   // crops：224×224×3（0〜255）の Float32Array の配列 → 1024次元の特徴量の配列
+  const n = crops.length, x = new Float32Array(n * 224 * 224 * 3);
+  crops.forEach((c, i) => x.set(c, i * 224 * 224 * 3));
+  const out = await ml.session.run({ x: new ort.Tensor('float32', x, [n, 224, 224, 3]) });
+  const f = out.f.data; return Array.from({ length: n }, (_, i) => f.subarray(i * 1024, (i + 1) * 1024));
+}
+function predictP(C, f) {
+  let z = C.b; for (let i = 0; i < f.length; i++) z += C.coef[i] * (f[i] - C.mean[i]) / C.scale[i];
+  const p = Math.min(1 - 1e-6, Math.max(1e-6, 1 / (1 + Math.exp(-z)))), l = Math.log(p / (1 - p));
+  return 1 / (1 + Math.exp(-(C.cal.a * l + C.cal.b)));
+}
+
+// ===== 航空写真：建物ごとの切り出し =====
+// 学習と同じ切り出し：建物の外接長方形の中心に合わせた正方形、一辺は長い方の辺の1.6倍（20〜60 m）。
+// 国土地理院のズーム18（約0.5 m/画素）の細かさにそろえてから、224×224 に拡大する。
+const Z18 = 256 * 2 ** 18;
+function cropSpec(B, b) {
+  let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
+  for (let v = B.st[b]; v < B.st[b + 1]; v++) { x0 = Math.min(x0, B.x[v]); x1 = Math.max(x1, B.x[v]); y0 = Math.min(y0, B.y[v]); y1 = Math.max(y1, B.y[v]); }
+  const cx = (x0 + x1) / 2 * Z18, cy = (y0 + y1) / 2 * Z18, lat = latOf((y0 + y1) / 2), mpp = 156543.03392 * Math.cos(lat * Math.PI / 180) / 2 ** 18;
+  const side_m = Math.min(60, Math.max(20, 1.6 * Math.max((x1 - x0) * Z18, (y1 - y0) * Z18) * mpp)), s = side_m / mpp;
+  return { cx, cy, s, n18: Math.max(8, Math.round(s)) };   // ズーム18の画素の座標と、一辺の画素数
+}
+// 正方形（ズーム18の画素）を、画像の画素の範囲 [x0, y0, x1, y1] に移す
+function squareToImage(src, sp) {
+  const xs = [], ys = [];
+  for (const [dx, dy] of [[-0.5, -0.5], [0.5, -0.5], [0.5, 0.5], [-0.5, 0.5]]) { const p = src.toPx(latOf((sp.cy + dy * sp.s) / Z18), lonOf((sp.cx + dx * sp.s) / Z18)); xs.push(p[0]); ys.push(p[1]); }
+  return [Math.min(...xs), Math.min(...ys), Math.max(...xs), Math.max(...ys)];
+}
+async function openGeoTiff(file, meta) {
+  if (!window.GeoTIFF) await loadScript(GEOTIFF_URL);
+  const tiff = await GeoTIFF.fromBlob(file), img = await tiff.getImage(), W = img.getWidth(), H = img.getHeight();
+  const bps = img.getBitsPerSample(), spp = img.getSamplesPerPixel();
+  if (bps !== 8) throw new Error('8ビットの画像だけに対応しています（この画像は' + bps + 'ビット）');
+  const g = meta.geo, fwd = llToProj(g.epsg, g.geographic);
+  if (!fwd) throw new Error('座標系に対応していません');
+  const toPx = (lat, lon) => { let [X, Y] = fwd(lat, lon); if (g.swap) [X, Y] = [Y, X]; return [(X - g.x0) / g.sx, (g.y0 - Y) / g.sy]; };
+  const samples = spp >= 3 ? [0, 1, 2] : [0];
+  const read = async (x0, y0, w, h) => {
+    const r = await img.readRasters({ window: [x0, y0, x0 + w, y0 + h], samples, interleave: true });
+    if (spp >= 3) return r instanceof Uint8Array ? r : Uint8Array.from(r);
+    const o = new Uint8Array(w * h * 3); for (let i = 0; i < w * h; i++) o[3 * i] = o[3 * i + 1] = o[3 * i + 2] = r[i]; return o;
+  };
+  return { W, H, toPx, read, name: file.name };
+}
+async function openGsiSample(onTile) {
+  const S = SAMPLE, W = S.nx * 256, H = S.ny * 256, cv = document.createElement('canvas'); cv.width = W; cv.height = H;
+  const ctx = cv.getContext('2d', { willReadFrequently: true }); let n = 0;
+  await Promise.all(Array.from({ length: S.nx * S.ny }, async (_, i) => {
+    const tx = S.x0 + (i % S.nx), ty = S.y0 + Math.floor(i / S.nx);
+    const r = await fetch('https://cyberjapandata.gsi.go.jp/xyz/' + S.layer + '/18/' + tx + '/' + ty + '.png'); if (!r.ok) throw new Error('HTTP ' + r.status);
+    const bmp = await createImageBitmap(await r.blob()); ctx.drawImage(bmp, (tx - S.x0) * 256, (ty - S.y0) * 256); onTile(++n, S.nx * S.ny);
+  }));
+  const rgba = ctx.getImageData(0, 0, W, H).data, rgb = new Uint8Array(W * H * 3), alpha = new Uint8Array(W * H);
+  for (let i = 0; i < W * H; i++) { rgb[3 * i] = rgba[4 * i]; rgb[3 * i + 1] = rgba[4 * i + 1]; rgb[3 * i + 2] = rgba[4 * i + 2]; alpha[i] = rgba[4 * i + 3]; }
+  const toPx = (lat, lon) => [mercX(lon) * Z18 - S.x0 * 256, mercY(lat) * Z18 - S.y0 * 256];
+  const read = async (x0, y0, w, h) => { const o = new Uint8Array(w * h * 3); for (let y = 0; y < h; y++) o.set(rgb.subarray(((y0 + y) * W + x0) * 3, ((y0 + y) * W + x0 + w) * 3), y * w * 3); return o; };
+  const ring = [[latOf(S.y0 / 2 ** 18), lonOf(S.x0 / 2 ** 18)], [latOf(S.y0 / 2 ** 18), lonOf((S.x0 + S.nx) / 2 ** 18)], [latOf((S.y0 + S.ny) / 2 ** 18), lonOf((S.x0 + S.nx) / 2 ** 18)], [latOf((S.y0 + S.ny) / 2 ** 18), lonOf(S.x0 / 2 ** 18)]];
+  return { W, H, toPx, read, alpha, ring, name: '国土地理院の正射画像（' + S.name + '、' + S.date + '撮影）' };
+}
+// 画像に写っている建物を、切り出して判定する
+async function judgeAerial(item, src, tick) {
+  const jobs = [];
+  for (const mu of state.munis) {
+    const B = mu.B;
+    for (let b = 0; b < B.n; b++) {
+      const [px, py] = src.toPx(latOf(B.cy[b]), lonOf(B.cx[b]));
+      if (px < 0 || py < 0 || px >= src.W || py >= src.H) continue;
+      const sp = cropSpec(B, b), box = squareToImage(src, sp);
+      if (box[0] < 0 || box[1] < 0 || box[2] > src.W || box[3] > src.H) { item.edge = (item.edge || 0) + 1; continue; }   // 切り出しが画像からはみ出す建物は判定しない
+      jobs.push({ mu, b, sp, box });
+    }
+  }
+  item.total = jobs.length; item.judged = 0; item.noData = 0;
+  if (!jobs.length) return;
+  // 画像を 2,048 画素四方ずつ読み、その中に切り出しが収まる建物をまとめて判定する
+  const T = 2048; jobs.sort((a, c) => Math.floor(a.box[1] / T) - Math.floor(c.box[1] / T) || a.box[0] - c.box[0]);
+  const groups = new Map();
+  for (const j of jobs) { const k = Math.floor(j.box[0] / T) + ',' + Math.floor(j.box[1] / T); if (!groups.has(k)) groups.set(k, []); groups.get(k).push(j); }
+  let done = 0;
+  for (const list of groups.values()) {
+    const x0 = Math.max(0, Math.floor(Math.min(...list.map(j => j.box[0])))), y0 = Math.max(0, Math.floor(Math.min(...list.map(j => j.box[1]))));
+    const x1 = Math.min(src.W, Math.ceil(Math.max(...list.map(j => j.box[2])))), y1 = Math.min(src.H, Math.ceil(Math.max(...list.map(j => j.box[3]))));
+    const w = x1 - x0, h = y1 - y0, rgb = await src.read(x0, y0, w, h);
+    for (let i = 0; i < list.length; i += 8) {
+      const part = list.slice(i, i + 8), crops = [], keep = [];
+      for (const j of part) {
+        const bx = [j.box[0] - x0, j.box[1] - y0, j.box[2] - x0, j.box[3] - y0];
+        // 写っていない部分（黒・透明）が2%を超える建物は判定しない
+        let bad = 0, tot = 0;
+        for (let y = Math.floor(bx[1]); y < Math.ceil(bx[3]); y += 2) for (let x = Math.floor(bx[0]); x < Math.ceil(bx[2]); x += 2) {
+          tot++; const q = (y * w + x) * 3; if (rgb[q] + rgb[q + 1] + rgb[q + 2] === 0) bad++;
+          else if (src.alpha && src.alpha[(y + y0) * src.W + x + x0] < 128) bad++;
+        }
+        if (bad > 0.02 * tot) { item.noData++; continue; }
+        const finer = (bx[2] - bx[0]) > j.sp.n18 * 1.05;
+        const c = finer ? resizeRGB(Uint8Array.from(resizeRGB(rgb, w, h, bx, j.sp.n18, j.sp.n18)), j.sp.n18, j.sp.n18, [0, 0, j.sp.n18, j.sp.n18], 224, 224) : resizeRGB(rgb, w, h, bx, 224, 224);
+        crops.push(c); keep.push(j);
+      }
+      if (crops.length) {
+        const fs = await swinFeatures(crops);
+        keep.forEach((j, k) => { const p = predictP(CLS.aerial, fs[k]); if (j.mu.src[j.b] !== 2) { j.mu.P[j.b] = p; j.mu.src[j.b] = 1; } item.judged++; if (!item.hits.includes(j.mu.name)) item.hits.push(j.mu.name); });
+      }
+      done += part.length; tick(done, jobs.length);
+    }
+  }
+}
+
+// ===== 地上の写真：写っている建物を見つけて切り出す =====
+// 学習と同じ対応づけ：0.5°ごとの光線で最初に当たる建物、5〜30 m、画面上の幅4°以上、中心が画角の中央80%以内。
+// 切り出しは建物の左右範囲×1.4、縦横比1.16、画面幅の35%以上。1棟1枚（画面の中央を最も広く占める写真、同じなら近い方）。
+function groundCandidates(meta, W, H) {
+  const lat = meta.lat, lon = meta.lon, X0 = mercX(lon), Y0 = mercY(lat), M = 40075016.686 * Math.cos(lat * Math.PI / 180);   // メルカトル1あたりのメートル
+  const portrait = H > W, f35 = meta.focal35 || 26, hfov = 2 * Math.atan((portrait ? 24 : 36) / (2 * f35)) * 180 / Math.PI;
+  const near = [];
+  for (const mu of state.munis) {
+    if (!mu.bounds.pad(0.01).contains([lat, lon])) continue; const B = mu.B;
+    for (let b = 0; b < B.n; b++) {
+      const dx = (B.cx[b] - X0) * M, dy = (B.cy[b] - Y0) * M; if (dx * dx + dy * dy > 45 * 45) continue;
+      const pts = []; for (let v = B.st[b]; v < B.st[b + 1]; v++) pts.push([(B.x[v] - X0) * M, -(B.y[v] - Y0) * M]);   // 東・北（m）
+      let inside = false; for (let i = 0, j = pts.length - 1; i < pts.length; j = i++) if ((pts[i][1] > 0) !== (pts[j][1] > 0) && 0 < (pts[j][0] - pts[i][0]) * (0 - pts[i][1]) / (pts[j][1] - pts[i][1]) + pts[i][0]) inside = !inside;
+      if (!inside) near.push({ mu, b, pts });
+    }
+  }
+  const angs = []; for (let a = -hfov / 2; a <= hfov / 2 + 1e-9; a += 0.5) angs.push(a);
+  const hitj = new Int32Array(angs.length).fill(-1), hitd = new Float64Array(angs.length).fill(Infinity);
+  angs.forEach((a, k) => {
+    const th = (meta.dir + a) * Math.PI / 180, ux = Math.sin(th), uy = Math.cos(th);
+    near.forEach((c, j) => {
+      const P = c.pts;
+      for (let i = 0; i < P.length; i++) {
+        const [ax, ay] = P[i], [bx, by] = P[(i + 1) % P.length], ex = bx - ax, ey = by - ay, den = ux * ey - uy * ex; if (Math.abs(den) < 1e-12) continue;
+        const t = (ax * ey - ay * ex) / den, s = (ax * uy - ay * ux) / den;   // 光線の長さ t、辺の位置 s
+        if (t > 0 && t <= 40 && s >= 0 && s <= 1 && t < hitd[k]) { hitd[k] = t; hitj[k] = j; }
+      }
+    });
+  });
+  const fpx = (W / 2) / Math.tan(hfov / 2 * Math.PI / 180), central = angs.map(a => Math.abs(a) <= hfov / 4), nC = central.filter(Boolean).length, out = [];
+  for (const j of new Set(Array.from(hitj).filter(v => v >= 0))) {
+    let a1 = Infinity, a2 = -Infinity, d = Infinity, cc = 0;
+    angs.forEach((a, k) => { if (hitj[k] === j) { a1 = Math.min(a1, a); a2 = Math.max(a2, a); d = Math.min(d, hitd[k]); if (central[k]) cc++; } });
+    const ac = (a1 + a2) / 2; if (a2 - a1 < 4 || Math.abs(ac) > 0.40 * hfov || d < 5 || d > 30) continue;
+    const x1 = W / 2 + fpx * Math.tan(a1 * Math.PI / 180), x2 = W / 2 + fpx * Math.tan(a2 * Math.PI / 180), cx = (x1 + x2) / 2;
+    let cw = Math.max((x2 - x1) * 1.4, 0.35 * W), ch = cw / 1.16; if (ch > H) { ch = H; cw = Math.min(W, ch * 1.16); }
+    cw = Math.min(cw, W); const Lx = Math.min(Math.max(0, cx - cw / 2), W - cw), Ty = (H - ch) / 2;
+    out.push({ mu: near[j].mu, b: near[j].b, box: [Lx, Ty, Lx + cw, Ty + ch], dist: d, cover: cc / nC });
+  }
+  return { list: out, hfov };
+}
+async function judgeGround(item, file, meta, tick) {
+  const bmp = await createImageBitmap(file), W = bmp.width, H = bmp.height;   // 撮影時の向き（EXIFの回転）は、ブラウザが反映する
+  const { list } = groundCandidates(meta, W, H); item.total = list.length; item.judged = 0;
+  if (!list.length) { bmp.close && bmp.close(); return; }
+  const cv = document.createElement('canvas'); cv.width = W; cv.height = H; const ctx = cv.getContext('2d', { willReadFrequently: true }); ctx.drawImage(bmp, 0, 0); bmp.close && bmp.close();
+  const rgba = ctx.getImageData(0, 0, W, H).data, rgb = new Uint8Array(W * H * 3); for (let i = 0; i < W * H; i++) { rgb[3 * i] = rgba[4 * i]; rgb[3 * i + 1] = rgba[4 * i + 1]; rgb[3 * i + 2] = rgba[4 * i + 2]; }
+  const fs = await swinFeatures(list.map(c => resizeRGB(rgb, W, H, c.box, 224, 224)));
+  list.forEach((c, k) => {
+    const q = c.cover * 1000 - c.dist, mu = c.mu;   // 画面の中央を広く占めるほど、同じなら近いほど良い
+    if (mu.src[c.b] === 2 && mu.Q[c.b] >= q) return;
+    mu.P[c.b] = predictP(CLS.ground, fs[k]); mu.src[c.b] = 2; mu.Q[c.b] = q; item.judged++; if (!item.hits.includes(mu.name)) item.hits.push(mu.name);
+  });
+  tick(list.length, list.length);
+}
+
+
+// ===== 市区町村の建物を持つ =====
 function buildMuni(info, got) {
-  const B = got.B, n = B.n, bounds = info.bounds, plane = makePlane(bounds);
-  const X = new Float64Array(n), Y = new Float64Array(n), grid = new Map();
+  const B = got.B, n = B.n, grid = new Map();
   for (let b = 0; b < n; b++) {
-    const p = plane.toXY(latOf(B.cy[b]), lonOf(B.cx[b])); X[b] = p.x; Y[b] = p.y;
     let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
     for (let v = B.st[b]; v < B.st[b + 1]; v++) { x0 = Math.min(x0, B.x[v]); x1 = Math.max(x1, B.x[v]); y0 = Math.min(y0, B.y[v]); y1 = Math.max(y1, B.y[v]); }
     for (let gx = Math.floor(x0 / GRID); gx <= Math.floor(x1 / GRID); gx++) for (let gy = Math.floor(y0 / GRID); gy <= Math.floor(y1 / GRID); gy++) { const key = gx + ',' + gy; let l = grid.get(key); if (!l) grid.set(key, l = []); l.push(b); }
   }
-  const roads = got.roads.map(line => line.map(p => plane.toXY(latOf(p[1]), lonOf(p[0]))));
-  const seed = (info.areaId * 2654435761) >>> 0;
-  const world = createWorld(seed, X, Y, roads, plane.W, plane.H);
-  const m = Object.assign({}, info, { plane, world, B, grid, total: n, cut: got.cut > 0, best: new Int8Array(n).fill(-1), cursor: [0, 0, 0, 0, 0] });
+  // P：倒壊の確率（判定していない建物は NaN）、src：使った画像（0 なし、1 航空写真、2 地上の写真）、Q：地上の写真の写り方の良さ
+  const m = Object.assign({}, info, { B, grid, cut: got.cut > 0, P: new Float32Array(n).fill(NaN), src: new Int8Array(n), Q: new Float32Array(n).fill(-Infinity) });
   m.outline = info.rings.map(r => L.polygon(r, { color: '#3a4fa0', weight: 2.5, dashArray: '7 5', fill: false, interactive: false }).addTo(lineGroup));
   state.munis.push(m);
-  // すでに取り込んだ、位置のある画像を、新しい市区町村にも当てる
-  state.images.filter(im => im.done && im.loc).forEach(im => applyLocated(im, [m]));
-  map.fitBounds(bounds, { padding: [16, 16] });
+  map.fitBounds(info.bounds, { padding: [16, 16] });
   blayer.redraw(); renderMunis(); renderResult();
   return m;
 }
 
-// ---- 取り込み ----
-function sampleName(k) {
-  const n = ++state.sampleNo[k], pad = (v, w) => String(v).padStart(w, '0');
-  return ['satellite_scene_' + pad(n, 2) + '.tif', 'aerial_course' + pad(n, 2) + '.jpg', 'heli_oblique_' + pad(n * 13, 4) + '.jpg', 'ground_' + pad(n * 17, 4) + '.jpg', 'drone_' + pad(n * 21, 4) + '.jpg'][k];
+// ===== 取り込みと判定 =====
+const KIND = ['衛星', '航空機', 'ヘリコプター', '地上', 'ドローン'];
+function makeItem(k, name, why, meta, file) {
+  const loc = meta ? locate(meta, k) : null;
+  const it = { k, name, why, meta, file, loc, hits: [], where: loc ? loc.how : meta && meta.crsUnknown != null ? '座標系を読めない（EPSG ' + meta.crsUnknown + '）' : '位置情報なし' };
+  // 判定できるか：航空機のオルソ画像（GeoTIFF）と、位置・方位のある地上の写真だけ
+  if (k === AIR) it.can = meta && meta.geo ? '' : meta && meta.crsUnknown != null ? '座標系に対応していないため判定できません' : 'オルソ画像（位置情報つきのGeoTIFF）でないため判定できません';
+  else if (k === GROUND) it.can = meta && meta.lat != null ? (meta.dir != null ? '' : '撮影方向の記録がないため判定できません') : '位置情報がないため判定できません';
+  else it.can = KIND[k] + 'の画像の判定器がないため、数に入れていません';
+  return it;
 }
-function applyLocated(item, munis) {   // 位置のある画像：範囲に入る建物を、重なる市区町村すべてで更新する
-  const lat = item.loc.ring.map(p => p[0]), lon = item.loc.ring.map(p => p[1]);
-  const box = L.latLngBounds([Math.min(...lat), Math.min(...lon)], [Math.max(...lat), Math.max(...lon)]);
-  for (const m of munis) {
-    if (!m.bounds.intersects(box)) continue;
-    const fp = { poly: item.loc.ring.map(p => m.plane.toXY(p[0], p[1])) };
-    fp.members = membersOf(m.world, fp);
-    if (fp.members.length) { applyImage(m.world, m.best, item.k, fp); if (!item.hits.includes(m.name)) item.hits.push(m.name); }
-  }
-}
-function ingestNow(item) {
-  item.done = true; item.hits = [];
-  if (item.loc) { applyLocated(item, state.munis); return; }
-  const m = state.munis.find(x => x.key === item.muniKey); if (!m) return;
-  const list = m.world.fps[item.k]; if (!list.length) return;
-  item.fp = list[m.cursor[item.k]++ % list.length]; item.hits.push(m.name);
-  applyImage(m.world, m.best, item.k, item.fp);
-}
-function enqueue(items) {
-  if (!items.length) return;
-  if (!state.busy && !state.queue.length) state.total = 0;
-  items.forEach(it => { state.images.push(it); state.queue.push(it); }); state.total += items.length;
-  renderList(); pump();
-}
-function pump() {
-  if (state.busy) return;
-  const it = state.queue.shift();
-  if (!it) { renderStatus(); return; }
-  state.busy = true; renderStatus();
-  setTimeout(() => { ingestNow(it); blayer.redraw(); state.busy = false; renderResult(); pump(); }, reduceMotion ? 0 : 220);
-}
-// 画像ごとに市区町村を決めてから取り込む。順番を守るため、1つずつ続けて行う
 function serial(job) { state.chain = state.chain.then(job).catch(e => { console.error(e); }); return state.chain; }
-async function centerMuni() {
-  const c = map.getCenter();
-  return muniAt(c.lat, c.lng) || await ensureMuniAt(c.lat, c.lng);
+async function centerMuni() { const c = map.getCenter(); return muniAt(c.lat, c.lng) || await ensureMuniAt(c.lat, c.lng); }
+async function placeItem(it) {   // 位置のある画像は、その場所の市区町村を読み込む
+  if (!it.loc) return;
+  const c = it.loc.lat != null ? [it.loc.lat, it.loc.lon] : ringCenter(it.loc.ring);
+  const m = muniAt(c[0], c[1]) || await ensureMuniAt(c[0], c[1]);
+  if (!m) it.can = it.can || '読み込んだ市区町村の外のため判定できません';
 }
-async function place(items) {
-  for (const it of items) {
-    if (!it.loc) continue;
-    const c = it.loc.lat != null ? [it.loc.lat, it.loc.lon] : ringCenter(it.loc.ring);
-    const m = muniAt(c[0], c[1]) || await ensureMuniAt(c[0], c[1]);
-    if (m) state.current = m.key;
-  }
-  const free = items.filter(it => !it.loc);
-  if (free.length) {
-    const m = await centerMuni();
-    if (!m) { $('status').textContent = '位置情報のない画像を入れる市区町村がありません。地図を動かして、市区町村の上で入れ直してください。'; $('status').className = 'status warn'; return items.filter(it => it.loc); }
-    free.forEach(it => { it.muniKey = m.key; }); state.current = m.key;
-  }
-  return items;
+function setStatus(text, cls) { const s = $('status'); s.textContent = text; s.className = 'status' + (cls ? ' ' + cls : ''); }
+async function judgeItem(it, i, n) {
+  state.images.push(it); renderList();
+  await placeItem(it);
+  if (it.can) { it.done = true; renderList(); renderResult(); return; }
+  try { await loadModel(); } catch (e) { it.can = '判定器を読み込めなかったため判定できませんでした'; it.done = true; renderList(); return; }
+  const label = (n > 1 ? (i + 1) + ' / ' + n + ' 枚目　' : '') + KIND[it.k] + '：' + it.name;
+  const tick = (d, t) => { setStatus(label + '　建物 ' + fmt(d) + ' / ' + fmt(t) + ' 棟を判定中', 'run'); $('bar').style.width = (t ? d / t * 100 : 0) + '%'; if (d % 64 < 8 || d === t) { blayer.redraw(); renderResult(); } };
+  setStatus(label + '　建物を探しています', 'run');
+  try {
+    if (it.k === AIR) { const src = it.sample ? it.sample : await openGeoTiff(it.file, it.meta); await judgeAerial(it, src, tick); }
+    else await judgeGround(it, it.file, it.meta, tick);
+    if (!it.total) it.can = it.k === GROUND ? '5〜30 m の範囲に、正面に写る建物が見つかりませんでした' : '画像の範囲に、判定できる建物がありませんでした';
+  } catch (e) { console.error(e); it.can = '判定できませんでした（' + (e && e.message ? e.message : e) + '）'; }
+  it.done = true; $('bar').style.width = '0';
+  blayer.redraw(); renderList(); renderResult();
 }
 function handleFiles(fileList) {
   const files = Array.from(fileList || []); if (!files.length) return;
   serial(async () => {
-    $('status').textContent = files.length + ' 枚の種類と位置を見分けています'; $('status').className = 'status run';
+    setStatus(files.length + ' 枚の種類と位置を見分けています', 'run');
     const known = [];
     for (const f of files) {
       const meta = await readMeta(f), c = classify(meta, f.name);
-      if (c.k < 0) state.unknown.push({ name: f.name, meta });
-      else known.push(makeItem(c.k, f.name, c.why, meta));
+      if (c.k < 0) state.unknown.push({ name: f.name, meta, file: f }); else known.push(makeItem(c.k, f.name, c.why, meta, f));
     }
     renderAsk();
-    if (known.length) enqueue(await place(known)); else renderStatus();
+    for (let i = 0; i < known.length; i++) await judgeItem(known[i], i, known.length);
+    renderStatus();
   });
 }
-function makeItem(k, name, why, meta) {
-  const loc = meta ? locate(meta, k) : null;
-  return { k, name, why, loc, where: loc ? loc.how : meta && meta.crsUnknown != null ? '座標系を読めない（EPSG ' + meta.crsUnknown + '）' : '位置情報なし', hits: [] };
+async function runSample() {
+  serial(async () => {
+    setStatus('国土地理院の正射画像を読み込んでいます', 'run');
+    let src = null;
+    try { src = await openGsiSample((d, t) => setStatus('国土地理院の正射画像を読み込んでいます… ' + d + ' / ' + t + ' 枚', 'run')); }
+    catch (e) { setStatus('国土地理院の正射画像を読み込めませんでした。通信の状態を確かめてください。', 'warn'); return; }
+    const it = { k: AIR, name: src.name, why: '国土地理院の正射画像（ズーム18、約0.5 m/画素）', loc: { ring: src.ring, how: '正射画像の範囲' }, where: '正射画像の範囲', sample: src, hits: [], can: '' };
+    map.fitBounds(L.latLngBounds(src.ring), { padding: [24, 24] });
+    await judgeItem(it, 0, 1); renderStatus();
+  });
 }
 
-// ---- 表示 ----
-function renderButtons() { $('btn-area').disabled = state.loading; $('btn-batch').disabled = state.loading; }
+// ===== 表示 =====
+function renderButtons() { $('btn-area').disabled = state.loading; $('btn-sample').disabled = state.loading; }
 function renderStatus() {
-  const st = $('status'), done = state.total - state.queue.length - (state.busy ? 1 : 0), running = state.busy || state.queue.length > 0;
-  $('bar').style.width = state.total && running ? (done / state.total * 100) + '%' : '0';
-  if (running) { st.className = 'status run'; st.textContent = '解析中　' + (done + 1) + ' / ' + state.total + ' 枚'; return; }
-  if (st.className.includes('warn')) return;
-  st.className = 'status';
-  st.textContent = state.images.length ? state.images.length + ' 枚を取り込みました。' : 'まだ画像がありません。';
+  const done = state.images.filter(im => im.done), ok = done.filter(im => !im.can);
+  setStatus(done.length ? done.length + ' 枚を取り込み、' + ok.length + ' 枚で判定しました。' : 'まだ画像がありません。');
 }
 function renderAsk() { $('ask').classList.toggle('on', state.unknown.length > 0); $('ask-count').textContent = state.unknown.length; }
 function renderMunis() {
@@ -1597,57 +1717,50 @@ function renderMunis() {
 function renderList() {
   const ul = $('detail-list'); ul.textContent = '';
   state.images.forEach((im, i) => {
-    const li = document.createElement('li'), b = document.createElement('b'), s = document.createElement('span'), t = document.createElement('span');
+    const li = document.createElement('li'), b = document.createElement('b'), s = document.createElement('span'), t = document.createElement('span'), r = document.createElement('span');
     b.textContent = (i + 1) + '. ' + im.name; b.title = im.name;
-    s.textContent = PLATFORMS[im.k].name + '：' + im.why;
-    t.textContent = '位置：' + (im.loc ? im.where : im.where + ' → 模擬の範囲') + (im.hits && im.hits.length ? '（' + im.hits.join('・') + '）' : im.done && im.loc ? '（読み込んだ市区町村の外）' : '');
-    li.appendChild(b); li.appendChild(s); li.appendChild(t); ul.appendChild(li);
+    s.textContent = KIND[im.k] + '：' + im.why; t.textContent = '位置：' + im.where + (im.hits.length ? '（' + im.hits.join('・') + '）' : '');
+    r.textContent = !im.done ? '判定中…' : im.can ? im.can : '建物 ' + fmt(im.judged) + ' 棟を判定' + (im.k === AIR && (im.edge || im.noData) ? '（端にかかる・写っていない ' + fmt((im.edge || 0) + (im.noData || 0)) + ' 棟は除外）' : '');
+    r.className = im.done && im.can ? 'ng' : 'okk';
+    li.appendChild(b); li.appendChild(s); li.appendChild(t); li.appendChild(r); ul.appendChild(li);
   });
-  $('detail-sum').textContent = '種類と位置の判定の内訳（' + state.images.length + ' 枚）';
-}
-function footprintRing(fp, plane) {
-  if (fp.poly) return fp.poly.map(plane.toLL);
-  const L1 = [], R1 = [], n = fp.line.length;
-  for (let i = 0; i < n; i++) {
-    const a = fp.line[Math.max(0, i - 1)], b = fp.line[Math.min(n - 1, i + 1)], len = Math.hypot(b.x - a.x, b.y - a.y) || 1, nx = -(b.y - a.y) / len * fp.width, ny = (b.x - a.x) / len * fp.width;
-    L1.push({ x: fp.line[i].x + nx, y: fp.line[i].y + ny }); R1.push({ x: fp.line[i].x - nx, y: fp.line[i].y - ny });
-  }
-  return L1.concat(R1.reverse()).map(plane.toLL);
+  $('detail-sum').textContent = '取り込んだ画像と判定の内訳（' + state.images.length + ' 枚）';
 }
 function drawFootprint() {
   fpGroup.clearLayers();
-  const last = state.images.filter(im => im.done && (im.loc || im.fp)).slice(-1)[0]; if (!last) return;
-  if (last.loc) { L.polygon(last.loc.ring, { color: '#222', weight: 1.6, fill: false, interactive: false }).addTo(fpGroup); return; }
-  const m = state.munis.find(x => x.key === last.muniKey); if (!m) return;
-  L.polygon(footprintRing(last.fp, m.plane), { color: '#222', weight: 1.6, fill: false, interactive: false }).addTo(fpGroup);
-  const c = last.fp.cloud;
-  if (c) { const ring = []; for (let i = 0; i < 40; i++) { const t = i / 40 * 2 * Math.PI; ring.push(m.plane.toLL({ x: c.cx + c.rx * Math.cos(t), y: c.cy + c.ry * Math.sin(t) })); } L.polygon(ring, { color: '#777', weight: 1, fillColor: '#fff', fillOpacity: 0.6, interactive: false }).addTo(fpGroup); }
+  const last = state.images.filter(im => im.done && im.loc && !im.can).slice(-1)[0]; if (!last) return;
+  L.polygon(last.loc.ring, { color: '#222', weight: 1.6, fill: false, interactive: false }).addTo(fpGroup);
+}
+function tallyMuni(m) {
+  let S = 0, V = 0, n = 0, na = 0, ng = 0;
+  for (let b = 0; b < m.B.n; b++) { const p = m.P[b]; if (p !== p) continue; S += p; V += p * (1 - p); n++; if (m.src[b] === 1) na++; else ng++; }
+  return { S, V, n, na, ng, L: Math.max(0, Math.floor(S - 1.645 * Math.sqrt(V + (S_USE * S) ** 2))) };
 }
 function renderResult() {
   const note = $('v-note'); note.textContent = '';
-  const rows = state.munis.map(m => { const a = tally(m.world, m.best).all; return { m, a, L: Math.floor(lowerBound(a, 'all', S_USE)) }; });
-  const sum = rows.reduce((s, r) => s + r.L, 0);
+  const rows = state.munis.map(m => ({ m, t: tallyMuni(m) })), sum = rows.reduce((s, r) => s + r.t.L, 0);
   $('v-min').textContent = fmt(sum);
   $('v-where').textContent = rows.length === 1 ? rows[0].m.name + 'で' : rows.length > 1 ? rows.length + ' 市区町村の合計で' : '';
-  const done = state.images.filter(im => im.done);
+  const judged = rows.reduce((s, r) => s + r.t.n, 0);
   if (!rows.length) note.textContent = '画像を入れると、写っている市区町村を読み込み、ここに最低値が出ます。';
-  else if (!done.length) note.textContent = '画像を入れると、ここに最低値が出ます。';
+  else if (!judged) note.textContent = '判定した建物はまだありません。';
   else {
-    const kinds = PLATFORMS.map((p, k) => [p.name, done.filter(im => im.k === k).length]).filter(x => x[1]).map(x => x[0] + ' ' + x[1]).join('・');
-    note.appendChild(document.createTextNode('画像 ' + done.length + ' 枚（' + kinds + '）'));
-    if (rows.length === 1) { const r = rows[0]; note.appendChild(document.createElement('br')); note.appendChild(document.createTextNode('建物 ' + fmt(r.m.B.n) + ' 棟のうち ' + fmt(r.a.obs) + ' 棟（' + pct(r.a.obs, r.m.B.n) + '）に画像あり')); }
+    const na = rows.reduce((s, r) => s + r.t.na, 0), ng = rows.reduce((s, r) => s + r.t.ng, 0), S = rows.reduce((s, r) => s + r.t.S, 0);
+    note.appendChild(document.createTextNode('判定した建物 ' + fmt(judged) + ' 棟（航空写真 ' + fmt(na) + '・地上の写真 ' + fmt(ng) + '）'));
+    note.appendChild(document.createElement('br'));
+    note.appendChild(document.createTextNode('確率の合計 ' + S.toFixed(1) + ' 棟から、ばらつきを差し引いた値'));
   }
   const tb = $('byc-body'); tb.textContent = ''; $('byc').hidden = rows.length < 2;
   rows.forEach(r => {
     const tr = document.createElement('tr');
-    [r.m.name, fmt(r.m.B.n), fmt(r.a.obs) + '（' + pct(r.a.obs, r.m.B.n) + '）', null].forEach((v, i) => {
+    [r.m.name, fmt(r.m.B.n), fmt(r.t.n) + '（' + pct(r.t.n, r.m.B.n) + '）', null].forEach((v, i) => {
       const td = document.createElement('td'); if (i) td.className = 'n';
-      if (v == null) { const b = document.createElement('b'); b.textContent = fmt(r.L) + ' 棟'; td.appendChild(b); } else td.textContent = v;
+      if (v == null) { const b = document.createElement('b'); b.textContent = fmt(r.t.L) + ' 棟'; td.appendChild(b); } else td.textContent = v;
       tr.appendChild(td);
     });
     tb.appendChild(tr);
   });
-  drawFootprint(); renderStatus(); renderList();
+  drawFootprint();
 }
 
 // ---- 操作 ----
@@ -1656,30 +1769,25 @@ const drop = $('drop');
 ['dragenter', 'dragover'].forEach(t => drop.addEventListener(t, e => { e.preventDefault(); drop.classList.add('over'); }));
 ['dragleave', 'drop'].forEach(t => drop.addEventListener(t, e => { e.preventDefault(); drop.classList.remove('over'); }));
 drop.addEventListener('drop', e => handleFiles(e.dataTransfer && e.dataTransfer.files));
-$('btn-batch').addEventListener('click', () => serial(async () => {
-  const items = await place([SAT, AIR, HELI, AIR, DRONE, SAT, AIR, GROUND, HELI, DRONE, AIR, GROUND].map(k => ({ k, name: sampleName(k), why: '模擬の画像', loc: null, where: '位置情報なし', hits: [] })));
-  enqueue(items);
+$('btn-sample').addEventListener('click', runSample);
+$('btn-reset').addEventListener('click', () => serial(async () => {
+  state.munis.forEach(m => { m.P.fill(NaN); m.src.fill(0); m.Q.fill(-Infinity); });
+  state.images = []; state.unknown = []; setStatus('');
+  blayer.redraw(); renderAsk(); renderList(); renderResult();
 }));
-$('btn-reset').addEventListener('click', () => {
-  if (state.busy || state.queue.length) return;
-  state.munis.forEach(m => { m.best.fill(-1); m.cursor = [0, 0, 0, 0, 0]; });
-  state.images = []; state.unknown = []; state.sampleNo = [0, 0, 0, 0, 0]; $('status').className = 'status';
-  blayer.redraw(); renderAsk(); renderResult();
-});
-$('btn-area').addEventListener('click', () => serial(async () => { const m = await centerMuni(); if (m) { state.current = m.key; map.fitBounds(m.bounds, { padding: [16, 16] }); } }));
-PLATFORMS.forEach((p, k) => { const o = document.createElement('option'); o.value = k; o.textContent = p.name; $('ask-type').appendChild(o); });
+$('btn-area').addEventListener('click', () => serial(async () => { const m = await centerMuni(); if (m) map.fitBounds(m.bounds, { padding: [16, 16] }); }));
+KIND.forEach((p, k) => { const o = document.createElement('option'); o.value = k; o.textContent = p; $('ask-type').appendChild(o); });
 $('ask-type').value = String(GROUND);
 $('ask-ok').addEventListener('click', () => {
-  const k = +$('ask-type').value, items = state.unknown.map(u => makeItem(k, u.name, '手で選んだ種類', u.meta)); state.unknown = []; renderAsk();
-  serial(async () => enqueue(await place(items)));
+  const k = +$('ask-type').value, items = state.unknown.map(u => makeItem(k, u.name, '手で選んだ種類', u.meta, u.file)); state.unknown = []; renderAsk();
+  serial(async () => { for (let i = 0; i < items.length; i++) await judgeItem(items[i], i, items.length); renderStatus(); });
 });
 $('ask-no').addEventListener('click', () => { state.unknown = []; renderAsk(); });
 $('base').addEventListener('change', e => setBase(e.target.value));
-
-// パソコンの中のファイルを直接開いたときは地理院地図、Webサーバーに置いたときはOpenStreetMapを最初に使う
 const firstBase = location.protocol === 'file:' ? 'pale' : 'osm';
 $('base').value = firstBase; setBase(firstBase);
-renderMunis(); renderResult();
+renderMunis(); renderResult(); renderList();
+
 </script>
 </body>
 </html>
